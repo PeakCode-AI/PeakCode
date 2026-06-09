@@ -740,9 +740,7 @@ const runCommandHealthProbe = <R>(effect: Effect.Effect<CommandResult, unknown, 
     Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
     Effect.exit,
     Effect.map((exit) =>
-      Exit.isSuccess(exit)
-        ? Result.succeed(exit.value)
-        : Result.fail(Cause.squash(exit.cause)),
+      Exit.isSuccess(exit) ? Result.succeed(exit.value) : Result.fail(Cause.squash(exit.cause)),
     ),
   );
 
@@ -1087,9 +1085,7 @@ export const makeCheckClaudeProviderStatus = (
     const executable = nonEmptyTrimmed(binaryPath) ?? "claude";
 
     // Probe 1: `claude --version` — is the CLI reachable?
-    const versionProbe = yield* runCommandHealthProbe(
-      runClaudeCommand(["--version"], executable),
-    );
+    const versionProbe = yield* runCommandHealthProbe(runClaudeCommand(["--version"], executable));
 
     if (Result.isFailure(versionProbe)) {
       const error = versionProbe.failure;
@@ -1202,9 +1198,7 @@ export const makeCheckGeminiProviderStatus = (
     const checkedAt = new Date().toISOString();
     const executable = nonEmptyTrimmed(binaryPath) ?? "gemini";
 
-    const versionProbe = yield* runCommandHealthProbe(
-      runGeminiCommand(["--version"], executable),
-    );
+    const versionProbe = yield* runCommandHealthProbe(runGeminiCommand(["--version"], executable));
 
     if (Result.isFailure(versionProbe)) {
       const error = versionProbe.failure;
@@ -1551,9 +1545,7 @@ export const makeCheckCursorProviderStatus = (
     const checkedAt = new Date().toISOString();
     const executable = resolveCursorAgentBinaryPath(nonEmptyTrimmed(binaryPath));
 
-    const versionProbe = yield* runCommandHealthProbe(
-      runCursorCommand(["--version"], executable),
-    );
+    const versionProbe = yield* runCommandHealthProbe(runCursorCommand(["--version"], executable));
 
     if (Result.isFailure(versionProbe)) {
       const error = versionProbe.failure;

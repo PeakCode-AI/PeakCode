@@ -61,6 +61,10 @@ export type Messages = {
     settings: string;
     addProject: string;
     noProjectsYet: string;
+    noProjectsYetDescription: string;
+    chooseProjectFolder: string;
+    openingFolderPicker: string;
+    addingProject: string;
     loadingProjects: string;
     toggleSidebar: string;
     codeLabel: string;
@@ -1079,6 +1083,10 @@ const en: Messages = {
     settings: "Settings",
     addProject: "Add project",
     noProjectsYet: "No projects yet",
+    noProjectsYetDescription: "Choose a local project folder to start your first thread.",
+    chooseProjectFolder: "Choose project folder",
+    openingFolderPicker: "Opening...",
+    addingProject: "Adding...",
     loadingProjects: "Loading projects",
     toggleSidebar: "Toggle thread sidebar",
     codeLabel: "Code",
@@ -2156,6 +2164,10 @@ const zh: Messages = {
     settings: "设置",
     addProject: "添加项目",
     noProjectsYet: "暂无项目",
+    noProjectsYetDescription: "选择一个本地项目文件夹来开始第一个线程。",
+    chooseProjectFolder: "选择项目文件夹",
+    openingFolderPicker: "正在打开...",
+    addingProject: "正在添加...",
     loadingProjects: "正在加载项目",
     toggleSidebar: "切换线程侧边栏",
     codeLabel: "代码",

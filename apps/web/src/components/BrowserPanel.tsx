@@ -285,9 +285,7 @@ function isBrowserPerfLoggingEnabled(): boolean {
   }
 
   try {
-    return (
-      window.localStorage.getItem("peakcode:browser-perf") === "1"
-    );
+    return window.localStorage.getItem("peakcode:browser-perf") === "1";
   } catch {
     return false;
   }

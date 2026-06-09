@@ -383,7 +383,18 @@ function stageMacIcons(stageResourcesDir: string, verbose: boolean) {
       })`sips -z 512 512 ${modernIconSource} --out ${iconPngPath}`,
     );
 
-    yield* generateMacIconSet(legacyIconSource, iconIcnsPath, tmpRoot, path, verbose);
+    yield* generateMacIconSet(legacyIconSource, iconIcnsPath, tmpRoot, path, verbose).pipe(
+      Effect.catch((error) =>
+        Effect.gen(function* () {
+          if (!(yield* fs.exists(iconIcnsPath))) {
+            return yield* error;
+          }
+          yield* Effect.log(
+            "[desktop-artifact] Reusing staged macOS .icns after iconset generation failed.",
+          );
+        }),
+      ),
+    );
 
     if (hasComposerIcon) {
       // Replace any repo-local placeholder so the staged build always reflects the authored Icon Composer asset.

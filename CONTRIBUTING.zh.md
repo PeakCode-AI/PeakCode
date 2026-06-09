@@ -102,12 +102,12 @@
 
 ### 前置条件
 
-| 依赖         | 最低版本   | 说明                         |
-|--------------|------------|------------------------------|
-| Bun          | ^1.3.9     | 包管理器及运行时              |
-| Node.js      | ^24.13.1   | 部分工具链所需               |
-| Git          | 2.30+      | 版本控制集成                  |
-| Codex CLI    | latest     | Codex 提供方支持所需          |
+| 依赖      | 最低版本 | 说明                 |
+| --------- | -------- | -------------------- |
+| Bun       | ^1.3.9   | 包管理器及运行时     |
+| Node.js   | ^24.13.1 | 部分工具链所需       |
+| Git       | 2.30+    | 版本控制集成         |
+| Codex CLI | latest   | Codex 提供方支持所需 |
 
 本项目使用 **Bun** 作为包管理器，采用 `isolated` 链接器。请勿使用 `npm` 或 `yarn`。
 
@@ -172,15 +172,15 @@ env -u PEAKCODE_AUTH_TOKEN PEAKCODE_PORT_OFFSET=3158 \
 
 ### Monorepo 包结构
 
-| 路径                  | 职责                                                           |
-|-----------------------|----------------------------------------------------------------|
+| 路径                  | 职责                                                                                                                        |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | `apps/server`         | Node.js WebSocket 服务器。包装 Codex app-server（通过 stdio 进行 JSON-RPC 通信），提供 React Web 应用，管理 AI 提供方会话。 |
-| `apps/web`            | React/Vite UI。会话用户体验、对话渲染、客户端状态管理。通过 WebSocket 连接。 |
-| `apps/desktop`        | Electron 桌面外壳。将 Web 应用封装为原生桌面应用。             |
-| `apps/marketing`      | 营销/落地页网站。                                                |
-| `packages/contracts`  | Effect-TS Schema 定义和 TypeScript 合约。仅包含 Schema——不含运行时逻辑。 |
-| `packages/shared`     | 被服务器和 Web 共同使用的运行时工具库。使用显式子路径导出——不使用 barrel index。 |
-| `packages/effect-acp` | Effect-TS ACP（Agents, Context, Policies）集成。              |
+| `apps/web`            | React/Vite UI。会话用户体验、对话渲染、客户端状态管理。通过 WebSocket 连接。                                                |
+| `apps/desktop`        | Electron 桌面外壳。将 Web 应用封装为原生桌面应用。                                                                          |
+| `apps/marketing`      | 营销/落地页网站。                                                                                                           |
+| `packages/contracts`  | Effect-TS Schema 定义和 TypeScript 合约。仅包含 Schema——不含运行时逻辑。                                                    |
+| `packages/shared`     | 被服务器和 Web 共同使用的运行时工具库。使用显式子路径导出——不使用 barrel index。                                            |
+| `packages/effect-acp` | Effect-TS ACP（Agents, Context, Policies）集成。                                                                            |
 
 ### 事件生命周期
 
@@ -379,4 +379,4 @@ I have read the CLA Document and I hereby sign the CLA
 
 ---
 
-*感谢您帮助 Peak Code 变得更好。每一份深思熟虑的贡献——无论是 Bug 报告、文档修复还是代码修改——都在推动项目向前发展。*
+_感谢您帮助 Peak Code 变得更好。每一份深思熟虑的贡献——无论是 Bug 报告、文档修复还是代码修改——都在推动项目向前发展。_

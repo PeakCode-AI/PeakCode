@@ -31,6 +31,7 @@ import {
   shouldShowDebugFeatureFlagsMenu,
   shouldPrunePinnedThreads,
   shouldClearThreadSelectionOnMouseDown,
+  SIDEBAR_THREAD_PREVIEW_LIMIT,
   sortProjectsForSidebar,
   sortThreadsForSidebar,
 } from "./Sidebar.logic";
@@ -598,6 +599,10 @@ describe("resolveProjectStatusIndicator", () => {
 });
 
 describe("getVisibleThreadsForProject", () => {
+  it("keeps the collapsed project preview aligned with the ten-thread sidebar target", () => {
+    expect(SIDEBAR_THREAD_PREVIEW_LIMIT).toBe(10);
+  });
+
   it("includes the active thread even when it falls below the folded preview", () => {
     const threads = Array.from({ length: 8 }, (_, index) =>
       makeThread({

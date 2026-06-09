@@ -102,12 +102,12 @@ When adding documentation, prefer clarity over comprehensiveness. A short, corre
 
 ### Prerequisites
 
-| Dependency    | Minimum Version | Notes                                    |
-|---------------|-----------------|------------------------------------------|
-| Bun           | ^1.3.9          | Package manager and runtime              |
-| Node.js       | ^24.13.1        | Also required for some tooling           |
-| Git           | 2.30+           | For version control integration          |
-| Codex CLI     | latest          | Required for Codex provider support      |
+| Dependency | Minimum Version | Notes                               |
+| ---------- | --------------- | ----------------------------------- |
+| Bun        | ^1.3.9          | Package manager and runtime         |
+| Node.js    | ^24.13.1        | Also required for some tooling      |
+| Git        | 2.30+           | For version control integration     |
+| Codex CLI  | latest          | Required for Codex provider support |
 
 The project uses **Bun** as its package manager with the `isolated` linker. Do not use `npm` or `yarn`.
 
@@ -172,15 +172,15 @@ If the UI shows no threads after connecting, the issue is likely a WebSocket aut
 
 ### Monorepo Packages
 
-| Path                  | Role                                                        |
-|-----------------------|-------------------------------------------------------------|
+| Path                  | Role                                                                                                                         |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `apps/server`         | Node.js WebSocket server. Wraps Codex app-server (JSON-RPC over stdio), serves the React web app, manages provider sessions. |
-| `apps/web`            | React/Vite UI. Session UX, conversation rendering, client-side state. Connects via WebSocket. |
-| `apps/desktop`        | Electron desktop shell. Wraps the web app as a native desktop application. |
-| `apps/marketing`      | Marketing / landing page site.                              |
-| `packages/contracts`  | Effect-TS Schema definitions and TypeScript contracts. Schema-only — no runtime logic. |
-| `packages/shared`     | Runtime utilities consumed by server and web. Uses explicit subpath exports — no barrel index. |
-| `packages/effect-acp` | Effect-TS ACP (Agents, Context, Policies) integration.      |
+| `apps/web`            | React/Vite UI. Session UX, conversation rendering, client-side state. Connects via WebSocket.                                |
+| `apps/desktop`        | Electron desktop shell. Wraps the web app as a native desktop application.                                                   |
+| `apps/marketing`      | Marketing / landing page site.                                                                                               |
+| `packages/contracts`  | Effect-TS Schema definitions and TypeScript contracts. Schema-only — no runtime logic.                                       |
+| `packages/shared`     | Runtime utilities consumed by server and web. Uses explicit subpath exports — no barrel index.                               |
+| `packages/effect-acp` | Effect-TS ACP (Agents, Context, Policies) integration.                                                                       |
 
 ### Event Lifecycle
 
@@ -279,7 +279,7 @@ All code must pass `bun run lint` and `bun run fmt:check` before opening a PR.
 ### What Makes a Good PR
 
 - **Small and focused.** Prefer PRs under 200 lines. Large PRs are difficult to review and more likely to be rejected.
-- **Clear motivation.** Explain *what* changed and *why*. If the change is non-obvious, include the reasoning.
+- **Clear motivation.** Explain _what_ changed and _why_. If the change is non-obvious, include the reasoning.
 - **Tests included.** New functionality must include tests. Bug fixes must include a regression test.
 - **Quality checks pass.** Run `bun run test`, `bun run lint`, `bun run fmt:check`, and `bun run typecheck` before opening the PR.
 - **UI changes include screenshots.** Before/after images are required. Videos for animation/interaction changes.
@@ -379,4 +379,4 @@ This is recorded once per repository and does not need to be repeated for subseq
 
 ---
 
-*Thank you for helping make Peak Code better. Every thoughtful contribution — whether a bug report, a documentation fix, or a code change — moves the project forward.*
+_Thank you for helping make Peak Code better. Every thoughtful contribution — whether a bug report, a documentation fix, or a code change — moves the project forward._

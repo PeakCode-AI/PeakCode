@@ -179,7 +179,6 @@ import { useThreadSelectionStore } from "../threadSelectionStore";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
 import { isNonEmpty as isNonEmptyString } from "effect/String";
 import {
-  describeAddProjectError,
   buildProjectThreadTree,
   deriveSidebarProjectData,
   extractDuplicateProjectCreateProjectId,
@@ -202,6 +201,7 @@ import {
   shouldShowDebugFeatureFlagsMenu,
   shouldPrunePinnedThreads,
   shouldClearThreadSelectionOnMouseDown,
+  SIDEBAR_THREAD_PREVIEW_LIMIT,
   sortProjectsForSidebar,
   sortThreadsForSidebar,
 } from "./Sidebar.logic";
@@ -251,7 +251,6 @@ import {
 } from "../lib/projectCreateRecovery";
 
 const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
-const THREAD_PREVIEW_LIMIT = 5;
 
 function useProjectSortLabels(): Record<SidebarProjectSortOrder, string> {
   const messages = useMessages();
@@ -1231,19 +1230,11 @@ export default function Sidebar() {
   const removeWorktreeMutation = useMutation(gitRemoveWorktreeMutationOptions({ queryClient }));
   const { activeProjectId: focusedProjectId } = useFocusedChatContext();
   const [addingProject, setAddingProject] = useState(false);
-  const [newCwd, setNewCwd] = useState("");
   const [searchPaletteOpen, setSearchPaletteOpen] = useState(false);
   const [searchPaletteMode, setSearchPaletteMode] = useState<SidebarSearchPaletteMode>("search");
   const [searchPaletteInitialQuery, setSearchPaletteInitialQuery] = useState<string | null>(null);
   const [isPickingFolder, setIsPickingFolder] = useState(false);
-  const [showManualPathInput, setShowManualPathInput] = useState(false);
   const [isAddingProject, setIsAddingProject] = useState(false);
-  const [addProjectError, setAddProjectError] = useState<string | null>(null);
-  const addProjectErrorMeaning = useMemo(
-    () => (addProjectError ? describeAddProjectError(addProjectError) : null),
-    [addProjectError],
-  );
-  const addProjectInputRef = useRef<HTMLInputElement | null>(null);
   const [renamingThreadId, setRenamingThreadId] = useState<ThreadId | null>(null);
   const [pendingArchiveConfirmationThreadId, setPendingArchiveConfirmationThreadId] =
     useState<ThreadId | null>(null);
@@ -1843,8 +1834,6 @@ export default function Sidebar() {
       setIsAddingProject(true);
       const finishAddingProject = () => {
         setIsAddingProject(false);
-        setNewCwd("");
-        setAddProjectError(null);
         setAddingProject(false);
       };
 
@@ -1957,16 +1946,6 @@ export default function Sidebar() {
     ],
   );
 
-  const handleAddProject = () => {
-    void addProjectFromPath(newCwd, { createIfMissing: true }).catch((error: unknown) => {
-      const description =
-        error instanceof Error ? error.message : "An error occurred while adding the project.";
-      setAddProjectError(description);
-    });
-  };
-
-  const canAddProject = newCwd.trim().length > 0 && !isAddingProject;
-
   // Keep the native folder picker and project creation in one awaited flow so
   // the UI can show whether we're still opening the dialog or creating the project.
   const handlePickFolder = useCallback(async () => {
@@ -1977,11 +1956,9 @@ export default function Sidebar() {
       const pickedPath = await api.dialogs.pickFolder();
       setIsPickingFolder(false);
       if (pickedPath) {
-        setAddProjectError(null);
         await addProjectFromPath(pickedPath).catch((error: unknown) => {
           const description =
             error instanceof Error ? error.message : "An error occurred while adding the project.";
-          setAddProjectError(description);
           toastManager.add({
             type: "error",
             title: "Unable to add project",
@@ -1992,7 +1969,6 @@ export default function Sidebar() {
     } catch (error) {
       const description =
         error instanceof Error ? error.message : "Unable to open the folder picker.";
-      setAddProjectError(description);
       toastManager.add({
         type: "error",
         title: "Unable to open folder picker",
@@ -2003,8 +1979,6 @@ export default function Sidebar() {
   }, [isPickingFolder, addProjectFromPath]);
 
   const handleStartAddProject = useCallback(() => {
-    setAddProjectError(null);
-    setShowManualPathInput(false);
     setAddingProject((prev) => !prev);
   }, []);
 
@@ -2023,10 +1997,16 @@ export default function Sidebar() {
       return;
     }
 
+    if (isElectron) {
+      void handlePickFolder();
+      return;
+    }
+
     handleStartAddProject();
   }, [
     appSettings.defaultThreadEnvMode,
     currentProjectShortcutTargetId,
+    handlePickFolder,
     handleNewThread,
     handleStartAddProject,
   ]);
@@ -3450,7 +3430,7 @@ export default function Sidebar() {
         entries: visibleChatPreviewEntries,
         activeEntryId: activeChatPreviewEntry?.rowId,
         isExpanded: chatThreadListExpanded,
-        previewLimit: THREAD_PREVIEW_LIMIT,
+        previewLimit: SIDEBAR_THREAD_PREVIEW_LIMIT,
       }),
     [activeChatPreviewEntry?.rowId, chatThreadListExpanded, visibleChatPreviewEntries],
   );
@@ -3476,7 +3456,7 @@ export default function Sidebar() {
         expandedThreadListProjectCwds: expandedThreadListsByProject,
         normalizeProjectCwd: normalizeSidebarProjectThreadListCwd,
         activeSidebarThreadId: activeSidebarThreadId ?? undefined,
-        previewLimit: THREAD_PREVIEW_LIMIT,
+        previewLimit: SIDEBAR_THREAD_PREVIEW_LIMIT,
         resolveThreadStatus: resolveThreadStatusForSidebar,
       }),
     [
@@ -5704,79 +5684,19 @@ export default function Sidebar() {
 
                 {shouldShowProjectPathEntry && (
                   <div className="mb-2.5 px-1">
-                    {!showManualPathInput ? (
-                      <div className="flex gap-1.5">
-                        {isElectron && (
-                          <button
-                            type="button"
-                            className="flex h-8 flex-1 items-center justify-center gap-2 rounded-lg bg-[var(--color-background-elevated-secondary)] px-2 text-[length:var(--app-font-size-ui,12px)] font-normal text-[var(--color-text-foreground-secondary)] transition-colors hover:bg-[var(--color-background-button-secondary-hover)] hover:text-[var(--color-text-foreground)] disabled:opacity-50"
-                            onClick={() => void handlePickFolder()}
-                            disabled={isPickingFolder || isAddingProject}
-                          >
-                            <FolderIcon className="size-3.5" />
-                            {isPickingFolder
-                              ? "Opening..."
-                              : isAddingProject
-                                ? "Adding..."
-                                : "Browse"}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="flex h-8 flex-1 items-center justify-center gap-2 rounded-lg bg-[var(--color-background-elevated-secondary)] px-2 text-[length:var(--app-font-size-ui,12px)] font-normal text-[var(--color-text-foreground-secondary)] transition-colors hover:bg-[var(--color-background-button-secondary-hover)] hover:text-[var(--color-text-foreground)]"
-                          onClick={() => setShowManualPathInput(true)}
-                        >
-                          <TbCursorText className="size-3.5" />
-                          Type path
-                        </button>
-                      </div>
-                    ) : (
-                      <div
-                        className={`flex items-center rounded-lg border bg-[var(--color-background-control-opaque)] transition-colors ${
-                          addProjectError
-                            ? "border-red-500/70 focus-within:border-red-500"
-                            : "border-[color:var(--color-border)] focus-within:border-[color:var(--color-border-focus)]"
-                        }`}
-                      >
-                        <input
-                          ref={addProjectInputRef}
-                          className="min-w-0 flex-1 bg-transparent pl-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
-                          placeholder="/path/to/project"
-                          value={newCwd}
-                          onChange={(event) => {
-                            setNewCwd(event.target.value);
-                            setAddProjectError(null);
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") handleAddProject();
-                            if (event.key === "Escape") {
-                              setShowManualPathInput(false);
-                              setAddProjectError(null);
-                            }
-                          }}
-                          autoFocus
-                        />
-                        <button
-                          type="button"
-                          className="shrink-0 px-2.5 py-1.5 text-xs font-medium text-muted-foreground/50 transition-colors hover:text-foreground disabled:opacity-40"
-                          onClick={handleAddProject}
-                          disabled={!canAddProject}
-                          aria-label="Add project"
-                        >
-                          {isAddingProject ? "..." : "↵"}
-                        </button>
-                      </div>
-                    )}
-                    {addProjectError && (
-                      <div className="mt-1 space-y-1 px-0.5">
-                        <p className="text-xs leading-tight text-red-400">{addProjectError}</p>
-                        {addProjectErrorMeaning && (
-                          <p className="text-xs leading-tight text-muted-foreground/70">
-                            {addProjectErrorMeaning}
-                          </p>
-                        )}
-                      </div>
-                    )}
+                    <button
+                      type="button"
+                      className="flex h-8 w-full items-center justify-center gap-2 rounded-lg bg-[var(--color-background-elevated-secondary)] px-2 text-[length:var(--app-font-size-ui,12px)] font-normal text-[var(--color-text-foreground-secondary)] transition-colors hover:bg-[var(--color-background-button-secondary-hover)] hover:text-[var(--color-text-foreground)] disabled:opacity-50"
+                      onClick={() => void handlePickFolder()}
+                      disabled={isPickingFolder || isAddingProject}
+                    >
+                      <FolderIcon className="size-3.5" />
+                      {isPickingFolder
+                        ? messages.sidebar.openingFolderPicker
+                        : isAddingProject
+                          ? messages.sidebar.addingProject
+                          : messages.sidebar.chooseProjectFolder}
+                    </button>
                   </div>
                 )}
 
@@ -5830,8 +5750,32 @@ export default function Sidebar() {
                 )}
 
                 {projectEmptyState === "empty" && (
-                  <div className="px-2 pt-4 text-center text-[length:var(--app-font-size-ui,12px)] text-muted-foreground/58">
-                    {messages.sidebar.noProjectsYet}
+                  <div className="px-2 pt-4 text-center">
+                    <div className="text-[length:var(--app-font-size-ui,12px)] text-muted-foreground/79">
+                      {messages.sidebar.noProjectsYet}
+                    </div>
+                    <div className="mx-auto mt-1 max-w-45 text-[length:var(--app-font-size-ui-meta,10px)] leading-4 text-muted-foreground/58">
+                      {messages.sidebar.noProjectsYetDescription}
+                    </div>
+                    <button
+                      type="button"
+                      className="mx-auto mt-3 inline-flex h-8 items-center justify-center gap-2 rounded-lg bg-[var(--color-background-elevated-secondary)] px-3 text-[length:var(--app-font-size-ui,12px)] font-normal text-[var(--color-text-foreground-secondary)] transition-colors hover:bg-[var(--color-background-button-secondary-hover)] hover:text-[var(--color-text-foreground)] disabled:opacity-50"
+                      onClick={() => {
+                        if (isElectron) {
+                          void handlePickFolder();
+                          return;
+                        }
+                        handleStartAddProject();
+                      }}
+                      disabled={isPickingFolder || isAddingProject}
+                    >
+                      <FolderIcon className="size-3.5" />
+                      {isPickingFolder
+                        ? messages.sidebar.openingFolderPicker
+                        : isAddingProject
+                          ? messages.sidebar.addingProject
+                          : messages.sidebar.chooseProjectFolder}
+                    </button>
                   </div>
                 )}
               </SidebarGroup>
