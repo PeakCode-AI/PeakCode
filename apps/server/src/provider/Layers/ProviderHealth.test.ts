@@ -82,6 +82,13 @@ function failingSpawnerLayer(description: string) {
   );
 }
 
+function dyingSpawnerLayer(error: unknown) {
+  return Layer.succeed(
+    ChildProcessSpawner.ChildProcessSpawner,
+    ChildProcessSpawner.make(() => Effect.die(error)),
+  );
+}
+
 /**
  * Create a temporary CODEX_HOME scoped to the current Effect test.
  * Cleanup is registered in the test scope rather than via Vitest hooks.
@@ -955,6 +962,24 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
           "Cursor Agent CLI (`cursor-agent`) is not installed or not on PATH.",
         );
       }).pipe(Effect.provide(failingSpawnerLayer("spawn cursor-agent ENOENT"))),
+    );
+
+    it.effect("returns unavailable when Cursor Agent spawn dies", () =>
+      Effect.gen(function* () {
+        const status = yield* checkCursorProviderStatus;
+        assert.strictEqual(status.provider, "cursor");
+        assert.strictEqual(status.status, "error");
+        assert.strictEqual(status.available, false);
+        assert.strictEqual(status.authStatus, "unknown");
+        assert.strictEqual(
+          status.message,
+          'Failed to execute Cursor Agent CLI health check: Executable not found in $PATH: "cursor-agent".',
+        );
+      }).pipe(
+        Effect.provide(
+          dyingSpawnerLayer(new TypeError('Executable not found in $PATH: "cursor-agent"')),
+        ),
+      ),
     );
 
     it.effect("returns unavailable when Cursor Agent exits with an error", () =>

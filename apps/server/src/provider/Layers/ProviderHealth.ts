@@ -26,6 +26,7 @@ import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import {
   Array,
   Cache,
+  Cause,
   DateTime,
   Duration,
   Effect,
@@ -734,6 +735,17 @@ const runCodexCommand = (
     ),
   );
 
+const runCommandHealthProbe = <R>(effect: Effect.Effect<CommandResult, unknown, R>) =>
+  effect.pipe(
+    Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
+    Effect.exit,
+    Effect.map((exit) =>
+      Exit.isSuccess(exit)
+        ? Result.succeed(exit.value)
+        : Result.fail(Cause.squash(exit.cause)),
+    ),
+  );
+
 const runClaudeCommand = (args: ReadonlyArray<string>, executable = "claude") =>
   runProviderCommand(executable, args).pipe(
     Effect.flatMap((result) =>
@@ -843,9 +855,8 @@ export const makeCheckCodexProviderStatus = (
     const probeEnv = makeCodexProbeEnv(homePath);
 
     // Probe 1: `codex --version` — is the CLI reachable?
-    const versionProbe = yield* runCodexCommand(["--version"], executable, probeEnv).pipe(
-      Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
-      Effect.result,
+    const versionProbe = yield* runCommandHealthProbe(
+      runCodexCommand(["--version"], executable, probeEnv),
     );
 
     if (Result.isFailure(versionProbe)) {
@@ -918,9 +929,8 @@ export const makeCheckCodexProviderStatus = (
       } satisfies ServerProviderStatus;
     }
 
-    const authProbe = yield* runCodexCommand(["login", "status"], executable, probeEnv).pipe(
-      Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
-      Effect.result,
+    const authProbe = yield* runCommandHealthProbe(
+      runCodexCommand(["login", "status"], executable, probeEnv),
     );
 
     if (Result.isFailure(authProbe)) {
@@ -1077,9 +1087,8 @@ export const makeCheckClaudeProviderStatus = (
     const executable = nonEmptyTrimmed(binaryPath) ?? "claude";
 
     // Probe 1: `claude --version` — is the CLI reachable?
-    const versionProbe = yield* runClaudeCommand(["--version"], executable).pipe(
-      Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
-      Effect.result,
+    const versionProbe = yield* runCommandHealthProbe(
+      runClaudeCommand(["--version"], executable),
     );
 
     if (Result.isFailure(versionProbe)) {
@@ -1125,9 +1134,8 @@ export const makeCheckClaudeProviderStatus = (
     const parsedVersion = parseGenericCliVersion(`${version.stdout}\n${version.stderr}`);
 
     // Probe 2: `claude auth status` — is the user authenticated?
-    const authProbe = yield* runClaudeCommand(["auth", "status"], executable).pipe(
-      Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
-      Effect.result,
+    const authProbe = yield* runCommandHealthProbe(
+      runClaudeCommand(["auth", "status"], executable),
     );
 
     if (Result.isFailure(authProbe)) {
@@ -1194,9 +1202,8 @@ export const makeCheckGeminiProviderStatus = (
     const checkedAt = new Date().toISOString();
     const executable = nonEmptyTrimmed(binaryPath) ?? "gemini";
 
-    const versionProbe = yield* runGeminiCommand(["--version"], executable).pipe(
-      Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
-      Effect.result,
+    const versionProbe = yield* runCommandHealthProbe(
+      runGeminiCommand(["--version"], executable),
     );
 
     if (Result.isFailure(versionProbe)) {
@@ -1284,10 +1291,7 @@ export const makeCheckGrokProviderStatus = (
     const checkedAt = new Date().toISOString();
     const executable = nonEmptyTrimmed(binaryPath) ?? "grok";
 
-    const versionProbe = yield* runGrokCommand(["--version"], executable).pipe(
-      Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
-      Effect.result,
-    );
+    const versionProbe = yield* runCommandHealthProbe(runGrokCommand(["--version"], executable));
 
     if (Result.isFailure(versionProbe)) {
       const error = versionProbe.failure;
@@ -1358,9 +1362,8 @@ export const makeCheckOpenCodeProviderStatus = (
     const checkedAt = new Date().toISOString();
     const executable = nonEmptyTrimmed(binaryPath) ?? "opencode";
 
-    const versionProbe = yield* runOpenCodeCommand(["--version"], executable).pipe(
-      Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
-      Effect.result,
+    const versionProbe = yield* runCommandHealthProbe(
+      runOpenCodeCommand(["--version"], executable),
     );
 
     if (Result.isFailure(versionProbe)) {
@@ -1427,10 +1430,7 @@ export const makeCheckKiloProviderStatus = (
     const checkedAt = new Date().toISOString();
     const executable = nonEmptyTrimmed(binaryPath) ?? "kilo";
 
-    const versionProbe = yield* runKiloCommand(["--version"], executable).pipe(
-      Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
-      Effect.result,
-    );
+    const versionProbe = yield* runCommandHealthProbe(runKiloCommand(["--version"], executable));
 
     if (Result.isFailure(versionProbe)) {
       const error = versionProbe.failure;
@@ -1495,10 +1495,7 @@ export const checkPiProviderStatus = (
   Effect.gen(function* () {
     const checkedAt = new Date().toISOString();
     const executable = nonEmptyTrimmed(binaryPath) ?? "pi";
-    const versionProbe = yield* runPiCommand(["--version"], executable).pipe(
-      Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
-      Effect.result,
-    );
+    const versionProbe = yield* runCommandHealthProbe(runPiCommand(["--version"], executable));
     const version =
       Result.isSuccess(versionProbe) && Option.isSome(versionProbe.success)
         ? versionProbe.success.value
@@ -1554,9 +1551,8 @@ export const makeCheckCursorProviderStatus = (
     const checkedAt = new Date().toISOString();
     const executable = resolveCursorAgentBinaryPath(nonEmptyTrimmed(binaryPath));
 
-    const versionProbe = yield* runCursorCommand(["--version"], executable).pipe(
-      Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
-      Effect.result,
+    const versionProbe = yield* runCommandHealthProbe(
+      runCursorCommand(["--version"], executable),
     );
 
     if (Result.isFailure(versionProbe)) {
