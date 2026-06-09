@@ -65,8 +65,7 @@ export function resolveAutoFeatureBranchName(
 }
 
 export function buildPeakcodeBranchName(preferredBranch?: string | null): string {
-  const normalizedExisting =
-    preferredBranch?.trim().replace(/^(codex|peakcode)\//i, "") ?? "";
+  const normalizedExisting = preferredBranch?.trim().replace(/^(codex|peakcode)\//i, "") ?? "";
   return `${WORKTREE_BRANCH_PREFIX}/${sanitizeBranchFragment(
     normalizedExisting || PEAKCODE_BRANCH_FALLBACK,
   )}`;

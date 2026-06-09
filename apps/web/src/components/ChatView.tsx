@@ -5567,6 +5567,9 @@ export default function ChatView({
     isAtEndRef.current = true;
     showScrollDebouncer.current.cancel();
     setShowScrollToBottom(false);
+    window.requestAnimationFrame(() => {
+      scrollToEnd(true);
+    });
 
     setThreadError(threadIdForSend, null);
     if (expiredTerminalContextCount > 0) {
