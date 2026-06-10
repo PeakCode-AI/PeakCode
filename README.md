@@ -68,6 +68,25 @@ bun run dev
 
 > **Requirements:** [Codex CLI](https://github.com/openai/codex), Node.js 24+ or Bun, Git 2.30+, modern browser.
 
+#### From Source - Windows
+
+On Windows, the server must run on Node.js because Bun does not yet implement ConPTY. The `dev` command handles this automatically. After cloning:
+
+```powershell
+# Install dependencies (use public registry if you have a private npm registry configured)
+bun install --registry https://registry.npmjs.org
+
+# Build the server (one-time)
+bun run build
+
+# Start the dev environment
+bun run dev
+```
+
+Then open **`http://localhost:5733`** in your browser.
+
+> `bun run dev` auto-detects Windows and runs the Node.js server alongside the Vite frontend — same command as macOS/Linux.
+
 ## Features
 
 ### Multi-Agent, One Interface
@@ -147,6 +166,22 @@ bun run dist:desktop:dmg   # macOS DMG
 bun run dist:desktop:linux # Linux AppImage
 bun run dist:desktop:win   # Windows installer
 ```
+
+### Windows Development
+
+`bun run dev` auto-detects Windows and runs the server on Node.js instead of Bun. The workflow is the same as macOS/Linux:
+
+```powershell
+# First-time: build the server
+bun run build
+
+# Start both frontend and backend
+bun run dev
+```
+
+Open **`http://localhost:5733`**. After editing server source, rebuild with `bun run build` and restart.
+
+> On Windows, `bun run dev` spawns Vite (via Bun) and the Node.js server as two coordinated processes — no manual terminal juggling or environment variables required.
 
 ### Isolated Development
 

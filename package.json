@@ -29,6 +29,7 @@
     "dev:web": "node scripts/dev-runner.ts dev:web",
     "dev:marketing": "turbo run dev --filter=@peakcode/marketing",
     "dev:desktop": "node scripts/dev-runner.ts dev:desktop",
+    "dev:win": "node scripts/dev-runner.ts dev:win",
     "electron": "bun run start:desktop",
     "electron:dev": "node scripts/dev-runner.ts dev:desktop --home-dir ./.peakcode/electron-dev",
     "start": "turbo run start --filter=peakcode",

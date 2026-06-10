@@ -37,6 +37,14 @@ const MODE_ARGS = {
     "--filter=@peakcode/web",
     "--parallel",
   ],
+  "dev:win": [
+    "run",
+    "dev",
+    "--ui=tui",
+    "--filter=@peakcode/contracts",
+    "--filter=@peakcode/web",
+    "--parallel",
+  ],
 } as const satisfies Record<string, ReadonlyArray<string>>;
 
 type DevMode = keyof typeof MODE_ARGS;
@@ -192,7 +200,7 @@ export function createDevRunnerEnv({
       delete output.PEAKCODE_LOG_WS_EVENTS;
     }
 
-    if (mode === "dev") {
+    if (mode === "dev" || mode === "dev:win") {
       output.PEAKCODE_MODE = "web";
       delete output.PEAKCODE_DESKTOP_WS_URL;
     }
@@ -451,30 +459,79 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
       return;
     }
 
-    const child = yield* ChildProcess.make(
-      "turbo",
-      [...MODE_ARGS[input.mode], ...input.turboArgs],
-      {
-        stdin: "inherit",
-        stdout: "inherit",
-        stderr: "inherit",
-        env,
-        extendEnv: false,
-        // Windows needs shell mode to resolve .cmd shims (e.g. bun.cmd).
-        shell: process.platform === "win32",
-        // Keep turbo in the same process group so terminal signals (Ctrl+C)
-        // reach it directly. Effect defaults to detached: true on non-Windows,
-        // which would put turbo in a new group and require manual forwarding.
-        detached: false,
-        forceKillAfter: "1500 millis",
-      },
-    );
+    // On Windows the server must run on Node.js because Bun does not
+    // implement ConPTY.  When the user runs `dev` on Windows — or explicitly
+    // runs `dev:win` — we split into two processes: turbo drives contracts +
+    // Vite, and Node.js runs the pre-built server directly.
+    const useWinSplit =
+      input.mode === "dev:win" ||
+      (input.mode === "dev" && process.platform === "win32");
 
-    const exitCode = yield* child.exitCode;
-    if (exitCode !== 0) {
-      return yield* new DevRunnerError({
-        message: `turbo exited with code ${exitCode}`,
+    if (useWinSplit) {
+      const pathService = yield* Path.Path;
+      const serverCwd = pathService.join(process.cwd(), "apps", "server");
+      const serverScript = pathService.join(serverCwd, "dist", "index.mjs");
+
+      const common = {
+        stdin: "inherit" as const,
+        stdout: "inherit" as const,
+        stderr: "inherit" as const,
+        env,
+        extendEnv: false as const,
+        detached: false as const,
+        forceKillAfter: "1500 millis" as const,
+      };
+
+      const turboChild = yield* ChildProcess.make(
+        "turbo",
+        [...MODE_ARGS["dev:win"], ...input.turboArgs],
+        { ...common, shell: process.platform === "win32" },
+      );
+
+      const serverChild = yield* ChildProcess.make("node", [serverScript], {
+        ...common,
+        cwd: serverCwd,
       });
+
+      const [turboExit, serverExit] = yield* Effect.all(
+        [turboChild.exitCode, serverChild.exitCode],
+        { concurrency: "unbounded" },
+      );
+
+      if (turboExit !== 0 || serverExit !== 0) {
+        const parts: Array<string> = [];
+        if (turboExit !== 0) parts.push(`turbo exited with code ${turboExit}`);
+        if (serverExit !== 0) parts.push(`server exited with code ${serverExit}`);
+        return yield* new DevRunnerError({
+          message: parts.join("; "),
+        });
+      }
+    } else {
+      const child = yield* ChildProcess.make(
+        "turbo",
+        [...MODE_ARGS[input.mode], ...input.turboArgs],
+        {
+          stdin: "inherit",
+          stdout: "inherit",
+          stderr: "inherit",
+          env,
+          extendEnv: false,
+          // Windows needs shell mode to resolve .cmd shims (e.g. bun.cmd).
+          shell: process.platform === "win32",
+          // Keep turbo in the same process group so terminal signals (Ctrl+C)
+          // reach it directly. Effect defaults to detached: true on non-Windows,
+          // which would put turbo in a new group and require manual forwarding.
+          detached: false,
+          forceKillAfter: "1500 millis",
+        },
+      );
+
+      const exitCode = yield* child.exitCode;
+      if (exitCode !== 0) {
+        return yield* new DevRunnerError({
+          message: `turbo exited with code ${exitCode}`,
+        });
+      }
     }
   }).pipe(
     Effect.mapError((cause) =>

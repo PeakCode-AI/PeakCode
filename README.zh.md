@@ -67,6 +67,25 @@ bun run dev
 
 > **要求：** [Codex CLI](https://github.com/openai/codex)、Node.js 24+ 或 Bun、Git 2.30+、现代浏览器。
 
+#### 从源码构建 - Windows
+
+Windows 上服务器需用 Node.js 运行（Bun 尚未实现 ConPTY）。`dev` 命令已自动处理此问题。克隆项目后：
+
+```powershell
+# 安装依赖（如果配了私有 npm 仓库，需指定公网 registry）
+bun install --registry https://registry.npmjs.org
+
+# 构建服务器（一次性）
+bun run build
+
+# 启动开发环境
+bun run dev
+```
+
+然后浏览器打开 **`http://localhost:5733`**。
+
+> `bun run dev` 自动检测 Windows 并用 Node.js 运行服务器，同时启动 Vite 前端——和 macOS/Linux 同一个命令。
+
 ## 功能特性
 
 ### 多代理，统一界面
@@ -146,6 +165,22 @@ bun run dist:desktop:dmg   # macOS DMG
 bun run dist:desktop:linux # Linux AppImage
 bun run dist:desktop:win   # Windows 安装包
 ```
+
+### Windows 开发
+
+`bun run dev` 自动检测 Windows 并用 Node.js 运行服务器，工作流与 macOS/Linux 一致：
+
+```powershell
+# 首次：构建服务器
+bun run build
+
+# 一键启动前后端
+bun run dev
+```
+
+打开 **`http://localhost:5733`**。修改服务器源码后，运行 `bun run build` 重新构建并重启。
+
+> Windows 上 `bun run dev` 会将 Vite（Bun）和 Node.js 服务器作为两个协调进程启动——无需手动开终端或配环境变量。
 
 ### 隔离开发
 
