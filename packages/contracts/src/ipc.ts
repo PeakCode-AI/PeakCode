@@ -119,6 +119,22 @@ import type {
   ListLocalUserSkillsResult,
 } from "./providerDiscovery";
 import type { ProviderCompactThreadInput } from "./provider";
+import type {
+  GatewayAvailableProvidersResult,
+  GatewayCapabilities,
+  GatewayConfig,
+  GatewayConfigPatch,
+  GatewayDiscoverModelsInput,
+  GatewayDiscoverModelsResult,
+  GatewayGetCapabilitiesInput,
+  GatewayGetProviderHealthInput,
+  GatewayModelSelection,
+  GatewayProviderHealthResult,
+  GatewayRemoveApiKeyInput,
+  GatewaySecretStatusResult,
+  GatewaySelectModelInput,
+  GatewaySetApiKeyInput,
+} from "./gateway";
 
 export interface ContextMenuItem<T extends string = string> {
   id: T;
@@ -421,6 +437,20 @@ export interface NativeApi {
     readPlugin: (input: ProviderReadPluginInput) => Promise<ProviderReadPluginResult>;
     listModels: (input: ProviderListModelsInput) => Promise<ProviderListModelsResult>;
     listAgents: (input: ProviderListAgentsInput) => Promise<ProviderListAgentsResult>;
+  };
+  gateway: {
+    getConfig: () => Promise<GatewayConfig>;
+    updateConfig: (input: GatewayConfigPatch) => Promise<GatewayConfig>;
+    discoverModels: (input: GatewayDiscoverModelsInput) => Promise<GatewayDiscoverModelsResult>;
+    getAvailableProviders: () => Promise<GatewayAvailableProvidersResult>;
+    getProviderHealth: (
+      input: GatewayGetProviderHealthInput,
+    ) => Promise<GatewayProviderHealthResult>;
+    selectModel: (input: GatewaySelectModelInput) => Promise<GatewayModelSelection>;
+    getCapabilities: (input: GatewayGetCapabilitiesInput) => Promise<GatewayCapabilities>;
+    setApiKey: (input: GatewaySetApiKeyInput) => Promise<GatewaySecretStatusResult>;
+    removeApiKey: (input: GatewayRemoveApiKeyInput) => Promise<GatewaySecretStatusResult>;
+    getSecretStatus: () => Promise<GatewaySecretStatusResult>;
   };
   skills: {
     listLocal: () => Promise<ListLocalUserSkillsResult>;

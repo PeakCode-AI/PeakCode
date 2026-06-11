@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { TrimmedString } from "./baseSchemas";
+import { GatewayConfig, GatewayConfigPatch } from "./gateway";
 import { DEFAULT_GIT_TEXT_GENERATION_MODEL } from "./model";
 import { ModelSelection, ProviderKind, ThreadEnvironmentMode } from "./orchestration";
 
@@ -76,6 +77,38 @@ export const ServerSettings = Schema.Struct({
   enableAssistantStreaming: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
   defaultThreadEnvMode: ThreadEnvironmentMode.pipe(Schema.withDecodingDefault(() => "local")),
   addProjectBaseDirectory: StringSetting.pipe(Schema.withDecodingDefault(() => "")),
+  gateway: GatewayConfig.pipe(
+    Schema.withDecodingDefault(() => ({
+      enabled: false,
+      defaultUpstreamProvider: "deepseek" as const,
+      upstreamProviders: [
+        {
+          provider: "deepseek" as const,
+          displayName: "DeepSeek",
+          protocol: "openai-compatible" as const,
+          baseUrl: "https://api.deepseek.com",
+          enabled: true,
+          defaultModel: "deepseek-chat",
+          customModels: ["deepseek-chat", "deepseek-reasoner"],
+          modelAliases: {},
+        },
+        {
+          provider: "glm" as const,
+          displayName: "GLM",
+          protocol: "openai-compatible" as const,
+          baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+          enabled: false,
+          defaultModel: "glm-4.5",
+          customModels: ["glm-4.5", "glm-4.5-air"],
+          modelAliases: {},
+        },
+      ],
+      healthCheckEnabled: true,
+      healthCheckIntervalMs: 30_000,
+      discoveryCacheTtlMs: 300_000,
+      fallbackStrategy: "fail" as const,
+    })),
+  ),
   textGenerationModelSelection: ModelSelection.pipe(
     Schema.withDecodingDefault(() => ({
       provider: "codex" as const,
@@ -113,6 +146,7 @@ export const ServerSettingsPatch = Schema.Struct({
   enableAssistantStreaming: Schema.optionalKey(Schema.Boolean),
   defaultThreadEnvMode: Schema.optionalKey(ThreadEnvironmentMode),
   addProjectBaseDirectory: Schema.optionalKey(StringSetting),
+  gateway: Schema.optionalKey(GatewayConfigPatch),
   textGenerationModelSelection: Schema.optionalKey(ModelSelectionPatch),
   providers: Schema.optionalKey(
     Schema.Struct({

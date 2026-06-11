@@ -9,6 +9,7 @@ import {
   type ServerProviderStatus,
   type ThreadId,
   DEFAULT_GIT_TEXT_GENERATION_MODEL,
+  type GatewayUpstreamProvider,
 } from "@peakcode/contracts";
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -91,6 +92,7 @@ import {
 import {
   serverConfigQueryOptions,
   serverQueryKeys,
+  serverSettingsQueryOptions,
   serverWorktreesQueryOptions,
 } from "../lib/serverReactQuery";
 import { cn, isMacPlatform } from "../lib/utils";
@@ -114,13 +116,7 @@ import { sameProviderOrder } from "../providerOrdering";
 
 // ── Model Channels (Service Gateways) ──────────────────────────────────────
 
-type ModelChannelId =
-  | "deepseek"
-  | "siliconflow"
-  | "volcano"
-  | "tongyi"
-  | "kimi"
-  | "minimax";
+type ModelChannelId = "deepseek" | "siliconflow" | "volcano" | "tongyi" | "kimi" | "minimax";
 
 type ModelChannel = {
   readonly id: ModelChannelId;
@@ -670,6 +666,12 @@ function SettingsRouteView() {
   const desktopTopBarTrafficLightGutterClassName = useDesktopTopBarTrafficLightGutterClassName();
   const queryClient = useQueryClient();
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
+  const serverSettingsQuery = useQuery(serverSettingsQueryOptions());
+  const gatewaySecretStatusQuery = useQuery({
+    queryKey: serverQueryKeys.gatewaySecretStatus(),
+    queryFn: async () => ensureNativeApi().gateway.getSecretStatus(),
+    staleTime: 15_000,
+  });
   const serverWorktreesQuery = useQuery(serverWorktreesQueryOptions());
   const removeWorktreeMutation = useMutation(gitRemoveWorktreeMutationOptions({ queryClient }));
   const syncServerReadModel = useStore((store) => store.syncServerReadModel);
@@ -724,10 +726,75 @@ function SettingsRouteView() {
     Partial<Record<ProviderKind, string | null>>
   >({});
   const [showAllCustomModels, setShowAllCustomModels] = useState(false);
-  const [enabledModelChannels, setEnabledModelChannels] = useState<ReadonlyArray<ModelChannelId>>(
-    readEnabledModelChannels,
+  const [enabledModelChannels, setEnabledModelChannels] =
+    useState<ReadonlyArray<ModelChannelId>>(readEnabledModelChannels);
+  const gatewayRunning = serverSettingsQuery.data?.gateway.enabled ?? false;
+  const gatewayUpstreams = serverSettingsQuery.data?.gateway.upstreamProviders ?? [];
+  const gatewaySecretStatusByProvider = useMemo(
+    () =>
+      new Map(
+        (gatewaySecretStatusQuery.data?.secrets ?? []).map((secret) => [
+          secret.provider,
+          secret.hasApiKey,
+        ]),
+      ),
+    [gatewaySecretStatusQuery.data],
   );
-  const [gatewayRunning, setGatewayRunning] = useState(false);
+  const [gatewayApiKeyInputByProvider, setGatewayApiKeyInputByProvider] = useState<
+    Partial<Record<GatewayUpstreamProvider, string>>
+  >({});
+  const gatewayToggleMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const api = ensureNativeApi();
+      return api.gateway.updateConfig({ enabled });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: serverQueryKeys.settings() });
+    },
+    onError: (error) => {
+      toastManager.add({
+        title: "Could not update gateway",
+        description: error instanceof Error ? error.message : String(error),
+        type: "error",
+      });
+    },
+  });
+  const gatewaySetApiKeyMutation = useMutation({
+    mutationFn: async (input: { provider: GatewayUpstreamProvider; apiKey: string }) => {
+      const api = ensureNativeApi();
+      return api.gateway.setApiKey(input);
+    },
+    onSuccess: (_result, variables) => {
+      setGatewayApiKeyInputByProvider((current) => ({
+        ...current,
+        [variables.provider]: "",
+      }));
+      void queryClient.invalidateQueries({ queryKey: serverQueryKeys.gatewaySecretStatus() });
+    },
+    onError: (error) => {
+      toastManager.add({
+        title: "Could not save gateway API key",
+        description: error instanceof Error ? error.message : String(error),
+        type: "error",
+      });
+    },
+  });
+  const gatewayRemoveApiKeyMutation = useMutation({
+    mutationFn: async (provider: GatewayUpstreamProvider) => {
+      const api = ensureNativeApi();
+      return api.gateway.removeApiKey({ provider });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: serverQueryKeys.gatewaySecretStatus() });
+    },
+    onError: (error) => {
+      toastManager.add({
+        title: "Could not remove gateway API key",
+        description: error instanceof Error ? error.message : String(error),
+        type: "error",
+      });
+    },
+  });
   const [browserNotificationPermission, setBrowserNotificationPermission] = useState(
     readBrowserNotificationPermissionState(),
   );
@@ -2555,7 +2622,8 @@ function SettingsRouteView() {
             control={
               <Switch
                 checked={gatewayRunning}
-                onCheckedChange={(checked) => setGatewayRunning(checked)}
+                disabled={gatewayToggleMutation.isPending}
+                onCheckedChange={(checked) => gatewayToggleMutation.mutate(Boolean(checked))}
               />
             }
           />
@@ -2565,15 +2633,13 @@ function SettingsRouteView() {
               <div>
                 <h4 className="mb-2 text-sm font-semibold text-foreground">Local API</h4>
                 <p className="mb-2 text-xs text-muted-foreground">
-                  Listening on http://127.0.0.1:9872/v1
+                  Listening on /gateway/openai/v1
                 </p>
                 <div className="space-y-1">
                   {[
-                    { label: "Root", url: "http://127.0.0.1:9872/v1" },
-                    { label: "Chat", url: "http://127.0.0.1:9872/v1/chat/completions" },
-                    { label: "Messages", url: "http://127.0.0.1:9872/v1/messages" },
-                    { label: "Responses", url: "http://127.0.0.1:9872/v1/responses" },
-                    { label: "Models", url: "http://127.0.0.1:9872/v1/models" },
+                    { label: "Root", url: "/gateway/openai/v1" },
+                    { label: "Chat", url: "/gateway/openai/v1/chat/completions" },
+                    { label: "Models", url: "/gateway/openai/v1/models" },
                   ].map((ep) => (
                     <div
                       key={ep.label}
@@ -2592,10 +2658,98 @@ function SettingsRouteView() {
                         }}
                         aria-label={`Copy ${ep.label} URL`}
                       >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
                       </button>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              <div>
+                <h4 className="mb-3 text-sm font-semibold text-foreground">Upstream API Keys</h4>
+                <div className="space-y-3">
+                  {gatewayUpstreams.map((upstream) => {
+                    const hasApiKey = gatewaySecretStatusByProvider.get(upstream.provider) ?? false;
+                    const apiKeyInput = gatewayApiKeyInputByProvider[upstream.provider] ?? "";
+                    const isSaving =
+                      gatewaySetApiKeyMutation.isPending &&
+                      gatewaySetApiKeyMutation.variables?.provider === upstream.provider;
+                    const isRemoving =
+                      gatewayRemoveApiKeyMutation.isPending &&
+                      gatewayRemoveApiKeyMutation.variables === upstream.provider;
+                    return (
+                      <div
+                        key={upstream.provider}
+                        className="rounded-lg border border-border/40 bg-[var(--color-background-panel)] p-3"
+                      >
+                        <div className="mb-3 flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-medium text-foreground">
+                              {upstream.displayName}
+                            </div>
+                            <div className="mt-1 font-mono text-xs text-muted-foreground">
+                              {upstream.baseUrl || "No base URL configured"}
+                            </div>
+                          </div>
+                          <span
+                            className={cn(
+                              "rounded-full px-2 py-0.5 text-xs",
+                              hasApiKey
+                                ? "bg-emerald-500/10 text-emerald-500"
+                                : "bg-amber-500/10 text-amber-500",
+                            )}
+                          >
+                            {hasApiKey ? "API key saved" : "API key required"}
+                          </span>
+                        </div>
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <Input
+                            type="password"
+                            value={apiKeyInput}
+                            placeholder={`Paste ${upstream.displayName} API key`}
+                            onChange={(event) =>
+                              setGatewayApiKeyInputByProvider((current) => ({
+                                ...current,
+                                [upstream.provider]: event.target.value,
+                              }))
+                            }
+                          />
+                          <Button
+                            type="button"
+                            disabled={apiKeyInput.trim().length === 0 || isSaving}
+                            onClick={() =>
+                              gatewaySetApiKeyMutation.mutate({
+                                provider: upstream.provider,
+                                apiKey: apiKeyInput.trim(),
+                              })
+                            }
+                          >
+                            {isSaving ? "Saving" : "Save"}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={!hasApiKey || isRemoving}
+                            onClick={() => gatewayRemoveApiKeyMutation.mutate(upstream.provider)}
+                          >
+                            {isRemoving ? "Removing" : "Remove"}
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

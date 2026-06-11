@@ -6,6 +6,9 @@ import {
   AuthCreatePairingCredentialInput,
   AuthRevokeClientSessionInput,
   AuthRevokePairingLinkInput,
+  type GatewayConfig,
+  type GatewayUpstreamConfig,
+  type GatewayUpstreamProvider,
 } from "@peakcode/contracts";
 import { DateTime, Effect, Exit, FileSystem, Layer, Path, Schema, Stream } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
@@ -18,6 +21,7 @@ import {
 import { resolveAttachmentPathById } from "./attachmentStore.ts";
 import { authErrorResponse, makeEffectAuthRequest, serveAuthHttpRoute } from "./auth/http";
 import { ServerAuth } from "./auth/Services/ServerAuth";
+import { ServerSecretStore } from "./auth/Services/ServerSecretStore";
 import type { ServerAuthShape } from "./auth/Services/ServerAuth";
 import type { SessionCredentialServiceShape } from "./auth/Services/SessionCredentialService";
 import { SessionCredentialService } from "./auth/Services/SessionCredentialService";
@@ -27,6 +31,7 @@ import { LOCAL_IMAGE_ROUTE_PATH, resolveAllowedLocalImageFile } from "./localIma
 import type { ProjectFaviconResolverShape } from "./project/Services/ProjectFaviconResolver";
 import { ProjectFaviconResolver } from "./project/Services/ProjectFaviconResolver";
 import type { ServerReadiness } from "./server/readiness";
+import { ServerSettingsService } from "./serverSettings";
 
 const PROJECT_FAVICON_CACHE_CONTROL = "public, max-age=3600";
 const decodeBootstrapInput = Schema.decodeUnknownEffect(AuthBootstrapInput);
@@ -58,6 +63,7 @@ export function makeEffectHttpRouteLayer(readiness: ServerReadiness) {
       ),
     ),
     authEffectRouteLayer,
+    gatewayEffectRouteLayer,
     projectFaviconEffectRouteLayer,
     localImageEffectRouteLayer,
     attachmentsEffectRouteLayer,
@@ -67,6 +73,17 @@ export function makeEffectHttpRouteLayer(readiness: ServerReadiness) {
 
 const requireAuthenticatedRequest = Effect.gen(function* () {
   const request = yield* HttpServerRequest.HttpServerRequest;
+  const serverAuth = yield* ServerAuth;
+  yield* serverAuth.authenticateHttpRequest(makeEffectAuthRequest(request));
+});
+
+const requireGatewayRequestAccess = Effect.gen(function* () {
+  const request = yield* HttpServerRequest.HttpServerRequest;
+  const config = yield* ServerConfig;
+  const url = HttpServerRequest.toURL(request);
+  if (url && isLegacyTokenAuthorized({ config, url })) {
+    return;
+  }
   const serverAuth = yield* ServerAuth;
   yield* serverAuth.authenticateHttpRequest(makeEffectAuthRequest(request));
 });
@@ -258,6 +275,179 @@ const authEffectRouteLayer = HttpRouter.add(
                 ? (error as { status: number }).status
                 : 500,
           },
+        ),
+      ),
+    ),
+  ),
+);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function upstreamSecretName(provider: GatewayUpstreamProvider): string {
+  return `gateway.upstream.${provider}.apiKey`;
+}
+
+function joinGatewayUrl(baseUrl: string, suffix: string): string {
+  return `${baseUrl.replace(/\/+$/u, "")}/${suffix.replace(/^\/+/u, "")}`;
+}
+
+function resolveGatewayUpstream(input: {
+  readonly config: GatewayConfig;
+  readonly model: string | null;
+}): {
+  readonly upstream: GatewayUpstreamConfig | null;
+  readonly requestedModel: string | null;
+  readonly resolvedModel: string | null;
+} {
+  const enabledProviders = new Set(input.config.upstreamProviders.map((upstream) => upstream.provider));
+  const slashIndex = input.model?.indexOf("/") ?? -1;
+  const prefixedProvider =
+    input.model && slashIndex > 0
+      ? (input.model.slice(0, slashIndex) as GatewayUpstreamProvider)
+      : null;
+  const provider =
+    prefixedProvider && enabledProviders.has(prefixedProvider)
+      ? prefixedProvider
+      : input.config.defaultUpstreamProvider;
+  const upstream =
+    input.config.upstreamProviders.find((candidate) => candidate.provider === provider) ?? null;
+  const requestedModel =
+    input.model && prefixedProvider === provider
+      ? input.model.slice(slashIndex + 1)
+      : input.model || upstream?.defaultModel || null;
+  const resolvedModel = requestedModel
+    ? (upstream?.modelAliases[requestedModel] ?? requestedModel)
+    : null;
+  return { upstream, requestedModel, resolvedModel };
+}
+
+function gatewayErrorResponse(message: string, status: number) {
+  return HttpServerResponse.jsonUnsafe(
+    {
+      error: {
+        message,
+        type: "peakcode_gateway_error",
+      },
+    },
+    { status },
+  );
+}
+
+const gatewayEffectRouteLayer = HttpRouter.add(
+  "*",
+  "/gateway/openai/v1/*",
+  Effect.gen(function* () {
+    yield* requireGatewayRequestAccess;
+
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const url = HttpServerRequest.toURL(request);
+    if (!url) return gatewayErrorResponse("Bad Request", 400);
+
+    const settings = yield* ServerSettingsService;
+    const secretStore = yield* ServerSecretStore;
+    const gatewayConfig = (yield* settings.getSettings).gateway;
+    if (!gatewayConfig.enabled) {
+      return gatewayErrorResponse("PeakCode gateway is disabled.", 503);
+    }
+
+    if (request.method === "GET" && url.pathname === "/gateway/openai/v1/models") {
+      const data = gatewayConfig.upstreamProviders.flatMap((upstream) => {
+        if (!upstream.enabled) return [];
+        const modelIds = new Set<string>(upstream.customModels);
+        if (upstream.defaultModel) modelIds.add(upstream.defaultModel);
+        return Array.from(modelIds).map((model) => ({
+          id: `${upstream.provider}/${model}`,
+          object: "model",
+          created: 0,
+          owned_by: upstream.provider,
+        }));
+      });
+      return HttpServerResponse.jsonUnsafe({ object: "list", data });
+    }
+
+    if (request.method !== "POST" || url.pathname !== "/gateway/openai/v1/chat/completions") {
+      return HttpServerResponse.text("Not Found", { status: 404 });
+    }
+
+    const payload = yield* readEffectJson(request, "Invalid gateway chat completions payload.").pipe(
+      Effect.mapError(() => ({ message: "Invalid JSON request body.", status: 400 as const })),
+    );
+    if (!isRecord(payload)) {
+      return gatewayErrorResponse("Request body must be a JSON object.", 400);
+    }
+
+    const requestedModel = typeof payload.model === "string" ? payload.model.trim() : null;
+    const { upstream, resolvedModel } = resolveGatewayUpstream({
+      config: gatewayConfig,
+      model: requestedModel,
+    });
+    if (!upstream) {
+      return gatewayErrorResponse("No gateway upstream provider is configured.", 400);
+    }
+    if (!upstream.enabled) {
+      return gatewayErrorResponse(`Gateway upstream provider '${upstream.provider}' is disabled.`, 400);
+    }
+    if (upstream.protocol !== "openai-compatible") {
+      return gatewayErrorResponse(
+        `Gateway upstream provider '${upstream.provider}' is not OpenAI-compatible.`,
+        400,
+      );
+    }
+    if (!resolvedModel) {
+      return gatewayErrorResponse(
+        `Gateway upstream provider '${upstream.provider}' has no model configured.`,
+        400,
+      );
+    }
+    if (upstream.baseUrl.trim().length === 0) {
+      return gatewayErrorResponse(
+        `Gateway upstream provider '${upstream.provider}' has no base URL configured.`,
+        400,
+      );
+    }
+
+    const apiKeyBytes = yield* secretStore.get(upstreamSecretName(upstream.provider));
+    const apiKey = apiKeyBytes ? new TextDecoder().decode(apiKeyBytes).trim() : "";
+    if (apiKey.length === 0) {
+      return gatewayErrorResponse(
+        `Gateway upstream provider '${upstream.provider}' has no API key configured.`,
+        401,
+      );
+    }
+
+    const upstreamResponse = yield* Effect.tryPromise({
+      try: () =>
+        fetch(joinGatewayUrl(upstream.baseUrl, "/chat/completions"), {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+            "Accept": request.headers.accept ?? "application/json",
+          },
+          body: JSON.stringify({
+            ...payload,
+            model: resolvedModel,
+          }),
+        }),
+      catch: (cause) => ({
+        message: cause instanceof Error ? cause.message : "Gateway upstream request failed.",
+        status: 502 as const,
+      }),
+    });
+
+    return HttpServerResponse.fromWeb(upstreamResponse);
+  }).pipe(
+    Effect.catch((error) =>
+      Effect.succeed(
+        gatewayErrorResponse(
+          typeof (error as { message?: unknown }).message === "string"
+            ? (error as { message: string }).message
+            : "Gateway request failed.",
+          typeof (error as { status?: unknown }).status === "number"
+            ? (error as { status: number }).status
+            : 500,
         ),
       ),
     ),

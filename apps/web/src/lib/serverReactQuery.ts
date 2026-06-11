@@ -8,6 +8,7 @@ export const serverQueryKeys = {
   authSession: () => ["server", "auth", "session"] as const,
   environment: () => ["server", "environment"] as const,
   settings: () => ["server", "settings"] as const,
+  gatewaySecretStatus: () => ["server", "gateway", "secretStatus"] as const,
   worktrees: () => ["server", "worktrees"] as const,
   providerUsage: (provider: ProviderKind | null | undefined, homePath?: string | null) =>
     ["server", "providerUsage", provider ?? null, homePath ?? null] as const,

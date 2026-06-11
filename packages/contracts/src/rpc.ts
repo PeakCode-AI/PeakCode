@@ -39,6 +39,22 @@ import {
 } from "./git";
 import { KeybindingRule } from "./keybindings";
 import {
+  GatewayAvailableProvidersResult,
+  GatewayCapabilities,
+  GatewayConfig,
+  GatewayConfigPatch,
+  GatewayDiscoverModelsInput,
+  GatewayDiscoverModelsResult,
+  GatewayGetCapabilitiesInput,
+  GatewayGetProviderHealthInput,
+  GatewayModelSelection,
+  GatewayProviderHealthResult,
+  GatewayRemoveApiKeyInput,
+  GatewaySecretStatusResult,
+  GatewaySelectModelInput,
+  GatewaySetApiKeyInput,
+} from "./gateway";
+import {
   ClientOrchestrationCommand,
   ORCHESTRATION_WS_METHODS,
   OrchestrationEvent,
@@ -567,6 +583,66 @@ export const WsProviderListAgentsRpc = Rpc.make(WS_METHODS.providerListAgents, {
   error: WsRpcError,
 });
 
+export const WsGatewayDiscoverModelsRpc = Rpc.make(WS_METHODS.gatewayDiscoverModels, {
+  payload: GatewayDiscoverModelsInput,
+  success: GatewayDiscoverModelsResult,
+  error: WsRpcError,
+});
+
+export const WsGatewaySelectModelRpc = Rpc.make(WS_METHODS.gatewaySelectModel, {
+  payload: GatewaySelectModelInput,
+  success: GatewayModelSelection,
+  error: WsRpcError,
+});
+
+export const WsGatewayGetProvidersRpc = Rpc.make(WS_METHODS.gatewayGetProviders, {
+  payload: Schema.Struct({}),
+  success: GatewayAvailableProvidersResult,
+  error: WsRpcError,
+});
+
+export const WsGatewayGetHealthRpc = Rpc.make(WS_METHODS.gatewayGetHealth, {
+  payload: GatewayGetProviderHealthInput,
+  success: GatewayProviderHealthResult,
+  error: WsRpcError,
+});
+
+export const WsGatewayGetConfigRpc = Rpc.make(WS_METHODS.gatewayGetConfig, {
+  payload: Schema.Struct({}),
+  success: GatewayConfig,
+  error: WsRpcError,
+});
+
+export const WsGatewayUpdateConfigRpc = Rpc.make(WS_METHODS.gatewayUpdateConfig, {
+  payload: GatewayConfigPatch,
+  success: GatewayConfig,
+  error: WsRpcError,
+});
+
+export const WsGatewayGetCapabilitiesRpc = Rpc.make(WS_METHODS.gatewayGetCapabilities, {
+  payload: GatewayGetCapabilitiesInput,
+  success: GatewayCapabilities,
+  error: WsRpcError,
+});
+
+export const WsGatewaySetApiKeyRpc = Rpc.make(WS_METHODS.gatewaySetApiKey, {
+  payload: GatewaySetApiKeyInput,
+  success: GatewaySecretStatusResult,
+  error: WsRpcError,
+});
+
+export const WsGatewayRemoveApiKeyRpc = Rpc.make(WS_METHODS.gatewayRemoveApiKey, {
+  payload: GatewayRemoveApiKeyInput,
+  success: GatewaySecretStatusResult,
+  error: WsRpcError,
+});
+
+export const WsGatewayGetSecretStatusRpc = Rpc.make(WS_METHODS.gatewayGetSecretStatus, {
+  payload: Schema.Struct({}),
+  success: GatewaySecretStatusResult,
+  error: WsRpcError,
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationImportThreadRpc,
@@ -637,4 +713,14 @@ export const WsRpcGroup = RpcGroup.make(
   WsProviderListModelsRpc,
   WsProviderListAgentsRpc,
   WsSkillsListLocalRpc,
+  WsGatewayDiscoverModelsRpc,
+  WsGatewaySelectModelRpc,
+  WsGatewayGetProvidersRpc,
+  WsGatewayGetHealthRpc,
+  WsGatewayGetConfigRpc,
+  WsGatewayUpdateConfigRpc,
+  WsGatewayGetCapabilitiesRpc,
+  WsGatewaySetApiKeyRpc,
+  WsGatewayRemoveApiKeyRpc,
+  WsGatewayGetSecretStatusRpc,
 );

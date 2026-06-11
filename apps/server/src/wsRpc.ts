@@ -37,6 +37,7 @@ import { OrchestrationEngineService } from "./orchestration/Services/Orchestrati
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery";
 import { ProviderDiscoveryService } from "./provider/Services/ProviderDiscoveryService";
 import { ProviderAdapterRegistry } from "./provider/Services/ProviderAdapterRegistry";
+import { GatewayService } from "./provider/Gateway/Services/GatewayService";
 import { ProviderHealth } from "./provider/Services/ProviderHealth";
 import { ProviderService } from "./provider/Services/ProviderService";
 import { getProviderUsageSnapshot } from "./providerUsageSnapshot";
@@ -188,6 +189,7 @@ export const makeWsRpcLayer = () =>
       const projectionReadModelQuery = yield* ProjectionSnapshotQuery;
       const providerAdapterRegistry = yield* ProviderAdapterRegistry;
       const providerDiscoveryService = yield* ProviderDiscoveryService;
+      const gatewayService = yield* GatewayService;
       const providerHealth = yield* ProviderHealth;
       const providerService = yield* ProviderService;
       const lifecycleEvents = yield* ServerLifecycleEvents;
@@ -718,6 +720,32 @@ export const makeWsRpcLayer = () =>
           rpcEffect(providerDiscoveryService.listModels(input), "Failed to list models"),
         [WS_METHODS.providerListAgents]: (input) =>
           rpcEffect(providerDiscoveryService.listAgents(input), "Failed to list agents"),
+        [WS_METHODS.gatewayDiscoverModels]: (input) =>
+          rpcEffect(gatewayService.discoverModels(input), "Failed to discover gateway models"),
+        [WS_METHODS.gatewaySelectModel]: (input) =>
+          rpcEffect(gatewayService.selectModel(input), "Failed to select gateway model"),
+        [WS_METHODS.gatewayGetProviders]: () =>
+          rpcEffect(
+            gatewayService.getAvailableProviders(),
+            "Failed to list gateway upstream providers",
+          ),
+        [WS_METHODS.gatewayGetHealth]: (input) =>
+          rpcEffect(gatewayService.getProviderHealth(input), "Failed to get gateway health"),
+        [WS_METHODS.gatewayGetConfig]: () =>
+          rpcEffect(gatewayService.getGatewayConfig(), "Failed to load gateway config"),
+        [WS_METHODS.gatewayUpdateConfig]: (input) =>
+          rpcEffect(gatewayService.updateGatewayConfig(input), "Failed to update gateway config"),
+        [WS_METHODS.gatewayGetCapabilities]: (input) =>
+          rpcEffect(
+            gatewayService.getCapabilities(input),
+            "Failed to get gateway capabilities",
+          ),
+        [WS_METHODS.gatewaySetApiKey]: (input) =>
+          rpcEffect(gatewayService.setApiKey(input), "Failed to store gateway API key"),
+        [WS_METHODS.gatewayRemoveApiKey]: (input) =>
+          rpcEffect(gatewayService.removeApiKey(input), "Failed to remove gateway API key"),
+        [WS_METHODS.gatewayGetSecretStatus]: () =>
+          rpcEffect(gatewayService.getSecretStatus(), "Failed to load gateway secret status"),
         [WS_METHODS.skillsListLocal]: (_input) =>
           rpcEffect(
             Effect.tryPromise(() => listLocalUserSkills()),

@@ -596,6 +596,18 @@ export function createWsNativeApi(): NativeApi {
       listModels: (input) => transport.request(WS_METHODS.providerListModels, input),
       listAgents: (input) => transport.request(WS_METHODS.providerListAgents, input),
     },
+    gateway: {
+      getConfig: () => transport.request(WS_METHODS.gatewayGetConfig),
+      updateConfig: (input) => transport.request(WS_METHODS.gatewayUpdateConfig, input),
+      discoverModels: (input) => transport.request(WS_METHODS.gatewayDiscoverModels, input),
+      getAvailableProviders: () => transport.request(WS_METHODS.gatewayGetProviders),
+      getProviderHealth: (input) => transport.request(WS_METHODS.gatewayGetHealth, input),
+      selectModel: (input) => transport.request(WS_METHODS.gatewaySelectModel, input),
+      getCapabilities: (input) => transport.request(WS_METHODS.gatewayGetCapabilities, input),
+      setApiKey: (input) => transport.request(WS_METHODS.gatewaySetApiKey, input),
+      removeApiKey: (input) => transport.request(WS_METHODS.gatewayRemoveApiKey, input),
+      getSecretStatus: () => transport.request(WS_METHODS.gatewayGetSecretStatus),
+    },
     skills: {
       listLocal: () => transport.request(WS_METHODS.skillsListLocal, null),
     },

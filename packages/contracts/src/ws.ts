@@ -81,6 +81,15 @@ import {
   ListLocalUserSkillsInput,
 } from "./providerDiscovery";
 import { ProviderCompactThreadInput } from "./provider";
+import {
+  GatewayConfigPatch,
+  GatewayDiscoverModelsInput,
+  GatewayGetCapabilitiesInput,
+  GatewayGetProviderHealthInput,
+  GatewayRemoveApiKeyInput,
+  GatewaySelectModelInput,
+  GatewaySetApiKeyInput,
+} from "./gateway";
 
 // ── WebSocket RPC Method Names ───────────────────────────────────────
 
@@ -163,6 +172,18 @@ export const WS_METHODS = {
 
   // Local user skills (home-dir scan, independent of provider)
   skillsListLocal: "skills.listLocal",
+
+  // Gateway methods
+  gatewayDiscoverModels: "gateway.discoverModels",
+  gatewaySelectModel: "gateway.selectModel",
+  gatewayGetProviders: "gateway.getProviders",
+  gatewayGetHealth: "gateway.getHealth",
+  gatewayGetConfig: "gateway.getConfig",
+  gatewayUpdateConfig: "gateway.updateConfig",
+  gatewayGetCapabilities: "gateway.getCapabilities",
+  gatewaySetApiKey: "gateway.setApiKey",
+  gatewayRemoveApiKey: "gateway.removeApiKey",
+  gatewayGetSecretStatus: "gateway.getSecretStatus",
 } as const;
 
 // ── Push Event Channels ──────────────────────────────────────────────
@@ -271,6 +292,18 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.providerListModels, ProviderListModelsInput),
   tagRequestBody(WS_METHODS.providerListAgents, ProviderListAgentsInput),
   tagRequestBody(WS_METHODS.skillsListLocal, ListLocalUserSkillsInput),
+
+  // Gateway methods
+  tagRequestBody(WS_METHODS.gatewayDiscoverModels, GatewayDiscoverModelsInput),
+  tagRequestBody(WS_METHODS.gatewaySelectModel, GatewaySelectModelInput),
+  tagRequestBody(WS_METHODS.gatewayGetProviders, Schema.Struct({})),
+  tagRequestBody(WS_METHODS.gatewayGetHealth, GatewayGetProviderHealthInput),
+  tagRequestBody(WS_METHODS.gatewayGetConfig, Schema.Struct({})),
+  tagRequestBody(WS_METHODS.gatewayUpdateConfig, GatewayConfigPatch),
+  tagRequestBody(WS_METHODS.gatewayGetCapabilities, GatewayGetCapabilitiesInput),
+  tagRequestBody(WS_METHODS.gatewaySetApiKey, GatewaySetApiKeyInput),
+  tagRequestBody(WS_METHODS.gatewayRemoveApiKey, GatewayRemoveApiKeyInput),
+  tagRequestBody(WS_METHODS.gatewayGetSecretStatus, Schema.Struct({})),
 ]);
 
 export const WebSocketRequest = Schema.Struct({
