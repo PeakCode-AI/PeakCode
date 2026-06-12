@@ -167,6 +167,41 @@ export function configurePeakCodeGatewayProviderInCodexConfig(
   return output.join("\n");
 }
 
+export function removePeakCodeGatewayProviderFromCodexConfig(config: string): string {
+  const lines = config.split(/\r?\n/);
+  const output: string[] = [];
+  let skippingGatewayProviderSection = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const startsSection = trimmed.startsWith("[") && trimmed.endsWith("]");
+
+    if (startsSection) {
+      skippingGatewayProviderSection =
+        trimmed === `[model_providers.${PEAKCODE_GATEWAY_PROVIDER_ID}]` ||
+        trimmed === `[model_providers."${PEAKCODE_GATEWAY_PROVIDER_ID}"]`;
+      if (skippingGatewayProviderSection) {
+        continue;
+      }
+    }
+
+    if (skippingGatewayProviderSection) {
+      continue;
+    }
+
+    if (
+      /^\s*model_provider\s*=/.test(line) &&
+      line.includes(`"${PEAKCODE_GATEWAY_PROVIDER_ID}"`)
+    ) {
+      continue;
+    }
+
+    output.push(line);
+  }
+
+  return output.join("\n");
+}
+
 function preparePeakCodeCodexHomeOverlay(input: {
   readonly env: NodeJS.ProcessEnv;
   readonly homePath?: string;
@@ -202,7 +237,9 @@ function preparePeakCodeCodexHomeOverlay(input: {
   const sourceConfig = existsSync(sourceConfigPath) ? readFileSync(sourceConfigPath, "utf8") : "";
   const overlayConfig = input.gatewayProvider
     ? configurePeakCodeGatewayProviderInCodexConfig(sourceConfig, input.gatewayProvider)
-    : disablePeakCodeBrowserPluginInCodexConfig(sourceConfig);
+    : disablePeakCodeBrowserPluginInCodexConfig(
+        removePeakCodeGatewayProviderFromCodexConfig(sourceConfig),
+      );
   writeFileSync(
     path.join(overlayHomePath, "config.toml"),
     disablePeakCodeBrowserPluginInCodexConfig(overlayConfig),
