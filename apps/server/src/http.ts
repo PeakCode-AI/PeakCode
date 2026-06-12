@@ -47,6 +47,11 @@ const decodeCreatePairingCredentialInput = Schema.decodeUnknownEffect(
 );
 const decodeRevokePairingLinkInput = Schema.decodeUnknownEffect(AuthRevokePairingLinkInput);
 const decodeRevokeClientSessionInput = Schema.decodeUnknownEffect(AuthRevokeClientSessionInput);
+const DEEPSEEK_GATEWAY_MODELS = ["deepseek-v4-flash", "deepseek-v4-pro"] as const;
+const DEEPSEEK_GATEWAY_MODEL_ALIASES = {
+  "deepseek-chat": "deepseek-v4-flash",
+  "deepseek-reasoner": "deepseek-v4-pro",
+} as const;
 
 export function makeEffectHttpRouteLayer(readiness: ServerReadiness) {
   return Layer.mergeAll(
@@ -335,11 +340,17 @@ function resolveGatewayUpstream(input: {
   const upstream =
     input.config.upstreamProviders.find((candidate) => candidate.provider === provider) ?? null;
   const requestedModel =
-    input.model && prefixedProvider === provider
-      ? input.model.slice(slashIndex + 1)
-      : input.model || upstream?.defaultModel || null;
+    input.model === provider
+      ? (upstream?.defaultModel ?? null)
+      : input.model && prefixedProvider === provider
+        ? input.model.slice(slashIndex + 1)
+        : input.model || upstream?.defaultModel || null;
+  const modelAliases: Record<string, string> =
+    upstream?.provider === "deepseek"
+      ? { ...DEEPSEEK_GATEWAY_MODEL_ALIASES, ...upstream.modelAliases }
+      : (upstream?.modelAliases ?? {});
   const resolvedModel = requestedModel
-    ? (upstream?.modelAliases[requestedModel] ?? requestedModel)
+    ? (modelAliases[requestedModel] ?? requestedModel)
     : null;
   return { upstream, requestedModel, resolvedModel };
 }
@@ -363,6 +374,11 @@ function makeGatewayModelsPayload(gatewayConfig: GatewayConfig) {
       if (!upstream.enabled) return [];
       const modelIds = new Set<string>(upstream.customModels);
       if (upstream.defaultModel) modelIds.add(upstream.defaultModel);
+      if (upstream.provider === "deepseek") {
+        for (const model of DEEPSEEK_GATEWAY_MODELS) {
+          modelIds.add(model);
+        }
+      }
       return Array.from(modelIds).map((model) => ({
         id: `${upstream.provider}/${model}`,
         object: "model",

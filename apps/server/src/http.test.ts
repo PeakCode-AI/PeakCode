@@ -280,8 +280,8 @@ describe("createHttpRequestHandler", () => {
       await expect(response.json()).resolves.toMatchObject({
         object: "list",
         data: expect.arrayContaining([
-          expect.objectContaining({ id: "deepseek/deepseek-chat", object: "model" }),
-          expect.objectContaining({ id: "deepseek/deepseek-reasoner", object: "model" }),
+          expect.objectContaining({ id: "deepseek/deepseek-v4-flash", object: "model" }),
+          expect.objectContaining({ id: "deepseek/deepseek-v4-pro", object: "model" }),
         ]),
       });
     });
@@ -298,6 +298,72 @@ describe("createHttpRequestHandler", () => {
       async (req, res) => {
         observed.path = req.url;
         observed.authorization = req.headers.authorization;
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        }
+        observed.body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ id: "chatcmpl-test", object: "chat.completion", choices: [] }));
+      },
+      async (upstreamOrigin) => {
+        const settings = makeGatewaySettings({
+          ...DEFAULT_SERVER_SETTINGS.gateway,
+          enabled: true,
+          upstreamProviders: [
+            {
+              provider: "deepseek",
+              displayName: "DeepSeek",
+              protocol: "openai-compatible",
+              baseUrl: `${upstreamOrigin}/v1`,
+              enabled: true,
+              defaultModel: "deepseek-v4-flash",
+              customModels: ["deepseek-v4-flash", "deepseek-v4-pro"],
+              modelAliases: {},
+            },
+          ],
+        });
+        const handler = await makeHandler(
+          config,
+          undefined,
+          makeGatewayDependencies({ settings, apiKey: "upstream-key" }),
+        );
+
+        await withServer(handler, async (origin) => {
+          const response = await fetch(`${origin}/gateway/openai/v1/chat/completions`, {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer desktop-secret",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "deepseek/deepseek-v4-pro",
+              messages: [{ role: "user", content: "hello" }],
+            }),
+          });
+
+          expect(response.status).toBe(200);
+          await expect(response.json()).resolves.toMatchObject({
+            id: "chatcmpl-test",
+            object: "chat.completion",
+          });
+        });
+      },
+    );
+
+    expect(observed.path).toBe("/v1/chat/completions");
+    expect(observed.authorization).toBe("Bearer upstream-key");
+    expect(observed.body).toMatchObject({
+      model: "deepseek-v4-pro",
+      messages: [{ role: "user", content: "hello" }],
+    });
+  });
+
+  it("maps provider-only DeepSeek requests from legacy defaults to V4 Flash", async () => {
+    const config = await makeConfig({ authToken: "desktop-secret" });
+    const observed: { body?: Record<string, unknown> } = {};
+    await withServer(
+      async (req, res) => {
         const chunks: Buffer[] = [];
         for await (const chunk of req) {
           chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
@@ -337,24 +403,18 @@ describe("createHttpRequestHandler", () => {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              model: "deepseek/deepseek-reasoner",
+              model: "deepseek",
               messages: [{ role: "user", content: "hello" }],
             }),
           });
 
           expect(response.status).toBe(200);
-          await expect(response.json()).resolves.toMatchObject({
-            id: "chatcmpl-test",
-            object: "chat.completion",
-          });
         });
       },
     );
 
-    expect(observed.path).toBe("/v1/chat/completions");
-    expect(observed.authorization).toBe("Bearer upstream-key");
     expect(observed.body).toMatchObject({
-      model: "deepseek-reasoner",
+      model: "deepseek-v4-flash",
       messages: [{ role: "user", content: "hello" }],
     });
   });
@@ -379,7 +439,7 @@ describe("createHttpRequestHandler", () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "deepseek/deepseek-chat",
+          model: "deepseek/deepseek-v4-flash",
           messages: [{ role: "user", content: "hello" }],
         }),
       });

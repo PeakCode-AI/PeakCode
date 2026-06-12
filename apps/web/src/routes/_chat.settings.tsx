@@ -168,7 +168,29 @@ const MODEL_CHANNELS: ReadonlyArray<ModelChannel> = [
   },
 ];
 
+const DEEPSEEK_GATEWAY_MODEL_OPTIONS = [
+  {
+    slug: "deepseek-v4-flash",
+    label: "DeepSeek V4 Flash",
+    description: "Fast default for Codex gateway usage.",
+  },
+  {
+    slug: "deepseek-v4-pro",
+    label: "DeepSeek V4 Pro",
+    description: "Higher capability route when you want stronger reasoning.",
+  },
+] as const;
+const DEEPSEEK_GATEWAY_MODEL_ALIASES: Record<string, string> = {
+  "deepseek-chat": "deepseek-v4-flash",
+  "deepseek-reasoner": "deepseek-v4-pro",
+};
+
 const MODEL_CHANNELS_STORAGE_KEY = "peakcode:enabled-model-channels:v1";
+
+function normalizeDeepSeekGatewayModel(model: string | undefined): string {
+  if (!model) return DEEPSEEK_GATEWAY_MODEL_OPTIONS[0].slug;
+  return DEEPSEEK_GATEWAY_MODEL_ALIASES[model] ?? model;
+}
 
 function readEnabledModelChannels(): ReadonlyArray<ModelChannelId> {
   try {
@@ -730,6 +752,12 @@ function SettingsRouteView() {
     useState<ReadonlyArray<ModelChannelId>>(readEnabledModelChannels);
   const gatewayRunning = serverSettingsQuery.data?.gateway.enabled ?? false;
   const gatewayUpstreams = serverSettingsQuery.data?.gateway.upstreamProviders ?? [];
+  const deepSeekGatewayUpstream = gatewayUpstreams.find(
+    (upstream) => upstream.provider === "deepseek",
+  );
+  const selectedDeepSeekGatewayModel = normalizeDeepSeekGatewayModel(
+    deepSeekGatewayUpstream?.defaultModel,
+  );
   const gatewaySecretStatusByProvider = useMemo(
     () =>
       new Map(
@@ -754,6 +782,36 @@ function SettingsRouteView() {
     onError: (error) => {
       toastManager.add({
         title: "Could not update gateway",
+        description: error instanceof Error ? error.message : String(error),
+        type: "error",
+      });
+    },
+  });
+  const gatewayDeepSeekModelMutation = useMutation({
+    mutationFn: async (model: (typeof DEEPSEEK_GATEWAY_MODEL_OPTIONS)[number]["slug"]) => {
+      const api = ensureNativeApi();
+      return api.gateway.updateConfig({
+        defaultUpstreamProvider: "deepseek",
+        upstreamProviders: [
+          {
+            provider: "deepseek",
+            enabled: true,
+            defaultModel: model,
+            customModels: DEEPSEEK_GATEWAY_MODEL_OPTIONS.map((option) => option.slug),
+            modelAliases: {
+              "deepseek-chat": "deepseek-v4-flash",
+              "deepseek-reasoner": "deepseek-v4-pro",
+            },
+          },
+        ],
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: serverQueryKeys.settings() });
+    },
+    onError: (error) => {
+      toastManager.add({
+        title: "Could not update DeepSeek model",
         description: error instanceof Error ? error.message : String(error),
         type: "error",
       });
@@ -2674,6 +2732,55 @@ function SettingsRouteView() {
                       </button>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              <div>
+                <h4 className="mb-3 text-sm font-semibold text-foreground">
+                  DeepSeek default model
+                </h4>
+                <div className="rounded-lg border border-border/40 bg-[var(--color-background-panel)] p-3">
+                  <div className="mb-3 flex flex-col gap-1">
+                    <div className="text-sm font-medium text-foreground">
+                      Used when Codex sends model{" "}
+                      <span className="font-mono text-xs">deepseek</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Configure Codex once against the local gateway, then switch Flash/Pro here.
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {DEEPSEEK_GATEWAY_MODEL_OPTIONS.map((option) => {
+                      const selected = selectedDeepSeekGatewayModel === option.slug;
+                      return (
+                        <button
+                          key={option.slug}
+                          type="button"
+                          disabled={gatewayDeepSeekModelMutation.isPending}
+                          onClick={() => {
+                            if (!selected) gatewayDeepSeekModelMutation.mutate(option.slug);
+                          }}
+                          className={cn(
+                            "rounded-lg border px-3 py-2 text-left transition-colors",
+                            selected
+                              ? "border-blue-500/70 bg-blue-500/10 text-foreground"
+                              : "border-border/50 bg-[var(--color-background-elevated-secondary)] text-muted-foreground hover:border-border hover:text-foreground",
+                          )}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium">{option.label}</span>
+                            {selected ? (
+                              <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-[11px] text-blue-500">
+                                Active
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="mt-1 font-mono text-xs">{option.slug}</div>
+                          <div className="mt-1 text-xs">{option.description}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 

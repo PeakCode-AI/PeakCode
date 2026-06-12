@@ -88,9 +88,12 @@ export const ServerSettings = Schema.Struct({
           protocol: "openai-compatible" as const,
           baseUrl: "https://api.deepseek.com",
           enabled: true,
-          defaultModel: "deepseek-chat",
-          customModels: ["deepseek-chat", "deepseek-reasoner"],
-          modelAliases: {},
+          defaultModel: "deepseek-v4-flash",
+          customModels: ["deepseek-v4-flash", "deepseek-v4-pro"],
+          modelAliases: {
+            "deepseek-chat": "deepseek-v4-flash",
+            "deepseek-reasoner": "deepseek-v4-pro",
+          },
         },
         {
           provider: "glm" as const,
