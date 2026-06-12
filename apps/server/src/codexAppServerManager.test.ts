@@ -420,6 +420,7 @@ describe("buildCodexProcessEnv", () => {
     expect(config).toContain('model_provider = "peakcode-gateway"');
     expect(config).toContain("[model_providers.openai]");
     expect(config).toContain("[model_providers.peakcode-gateway]");
+    expect(config).toContain('name = "PeakCode Gateway"');
     expect(config).toContain('base_url = "http://127.0.0.1:3773/gateway/openai/v1"');
     expect(config).toContain('env_key = "PEAKCODE_GATEWAY_API_KEY"');
     expect(config).not.toContain('model_provider = "openai"');
@@ -449,6 +450,7 @@ describe("buildCodexProcessEnv", () => {
       }
       const overlayConfig = readFileSync(path.join(codexHome, "config.toml"), "utf8");
       expect(overlayConfig).toContain('model_provider = "peakcode-gateway"');
+      expect(overlayConfig).toContain('name = "PeakCode Gateway"');
       expect(overlayConfig).toContain(
         'base_url = "http://127.0.0.1:3773/gateway/openai/v1"',
       );

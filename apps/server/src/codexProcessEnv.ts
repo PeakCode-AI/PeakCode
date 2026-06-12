@@ -159,6 +159,7 @@ export function configurePeakCodeGatewayProviderInCodexConfig(
   }
   output.push(
     `[model_providers.${PEAKCODE_GATEWAY_PROVIDER_ID}]`,
+    'name = "PeakCode Gateway"',
     `base_url = "${gateway.baseUrl.replaceAll('"', '\\"')}"`,
     `env_key = "${PEAKCODE_GATEWAY_API_KEY_ENV}"`,
   );
