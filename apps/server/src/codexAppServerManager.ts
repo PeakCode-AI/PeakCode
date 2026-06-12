@@ -50,6 +50,7 @@ import {
 } from "./provider/codexCliVersion";
 import { isNonFatalCodexErrorMessage } from "./codexErrorClassification.ts";
 import { buildCodexProcessEnv } from "./codexProcessEnv.ts";
+import { ServerConfig, type ServerConfigShape } from "./config.ts";
 import { transcribeVoiceWithChatGptSession } from "./voiceTranscription.ts";
 
 type PendingRequestKey = string;
@@ -233,6 +234,13 @@ const CODEX_DEFAULT_MODEL = "gpt-5.5";
 const CODEX_SPARK_MODEL = "gpt-5.3-codex-spark";
 const CODEX_SPARK_DISABLED_PLAN_TYPES = new Set<CodexPlanType>(["free", "go", "plus"]);
 const CODEX_DISCOVERY_SESSION_IDLE_MS = 10 * 60 * 1000;
+const DEEPSEEK_GATEWAY_CODEX_MODELS = new Set([
+  "deepseek",
+  "deepseek-chat",
+  "deepseek-reasoner",
+  "deepseek-v4-flash",
+  "deepseek-v4-pro",
+]);
 
 function asObject(value: unknown): Record<string, unknown> | undefined {
   if (!value || typeof value !== "object") {
@@ -247,6 +255,24 @@ function asString(value: unknown): string | undefined {
 
 function normalizeCodexProcessLine(rawLine: string): string {
   return rawLine.replaceAll(ANSI_ESCAPE_REGEX, "").trim();
+}
+
+function resolveDeepSeekGatewayCodexModel(model: string | undefined | null): string | undefined {
+  const trimmed = model?.trim();
+  if (!trimmed) return undefined;
+  const slashIndex = trimmed.indexOf("/");
+  const unprefixed =
+    slashIndex > 0 && trimmed.slice(0, slashIndex) === "deepseek"
+      ? trimmed.slice(slashIndex + 1)
+      : trimmed;
+  return DEEPSEEK_GATEWAY_CODEX_MODELS.has(unprefixed) ? unprefixed : undefined;
+}
+
+function localGatewayBaseUrl(config: ServerConfigShape): string {
+  const host =
+    config.host && config.host !== "0.0.0.0" && config.host !== "::" ? config.host : "127.0.0.1";
+  const formattedHost = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+  return `http://${formattedHost}:${config.port}/gateway/openai/v1`;
 }
 
 function isIgnorableCodexProcessLine(rawLine: string): boolean {
@@ -669,6 +695,32 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     this.runPromise = services ? Effect.runPromiseWith(services) : Effect.runPromise;
   }
 
+  private async resolveGatewayProviderConfig(model: string | undefined): Promise<
+    | {
+        readonly baseUrl: string;
+        readonly apiKey: string;
+      }
+    | undefined
+  > {
+    if (!resolveDeepSeekGatewayCodexModel(model)) {
+      return undefined;
+    }
+
+    try {
+      const config = (await this.runPromise(
+        Effect.gen(function* () {
+          return yield* ServerConfig;
+        }),
+      )) as ServerConfigShape;
+      return {
+        baseUrl: localGatewayBaseUrl(config),
+        apiKey: config.authToken ?? "peakcode-local-gateway",
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
   async startSession(input: CodexAppServerStartSessionInput): Promise<ProviderSession> {
     const threadId = input.threadId;
     const now = new Date().toISOString();
@@ -696,6 +748,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       const codexOptions = readCodexProviderOptions(input);
       const codexBinaryPath = codexOptions.binaryPath ?? "codex";
       const codexHomePath = codexOptions.homePath;
+      const gatewayProvider = await this.resolveGatewayProviderConfig(input.model);
       this.assertSupportedCodexCliVersion({
         binaryPath: codexBinaryPath,
         cwd: resolvedCwd,
@@ -705,6 +758,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
         cwd: resolvedCwd,
         env: buildCodexProcessEnv({
           ...(codexHomePath ? { homePath: codexHomePath } : {}),
+          ...(gatewayProvider ? { gatewayProvider } : {}),
         }),
         stdio: ["pipe", "pipe", "pipe"],
         shell: process.platform === "win32",
@@ -1314,6 +1368,9 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       });
       const codexBinaryPath = codexOptions.binaryPath ?? "codex";
       const codexHomePath = codexOptions.homePath;
+      const gatewayProvider = await this.resolveGatewayProviderConfig(
+        input.modelSelection?.provider === "codex" ? input.modelSelection.model : undefined,
+      );
       this.assertSupportedCodexCliVersion({
         binaryPath: codexBinaryPath,
         cwd: resolvedCwd,
@@ -1323,6 +1380,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
         cwd: resolvedCwd,
         env: buildCodexProcessEnv({
           ...(codexHomePath ? { homePath: codexHomePath } : {}),
+          ...(gatewayProvider ? { gatewayProvider } : {}),
         }),
         stdio: ["pipe", "pipe", "pipe"],
         shell: process.platform === "win32",

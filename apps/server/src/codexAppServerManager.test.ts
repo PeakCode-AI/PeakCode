@@ -7,6 +7,7 @@ import { ApprovalRequestId, ThreadId } from "@peakcode/contracts";
 
 import {
   buildCodexProcessEnv,
+  configurePeakCodeGatewayProviderInCodexConfig,
   disablePeakCodeBrowserPluginInCodexConfig,
   resolveCodexBrowserUsePipePath,
 } from "./codexProcessEnv";
@@ -399,6 +400,63 @@ describe("buildCodexProcessEnv", () => {
     expect(disablePeakCodeBrowserPluginInCodexConfig('model = "gpt-5.5"')).toContain(
       '[plugins."peakcode-browser@local"]\nenabled = false',
     );
+  });
+
+  it("configures Peak Code gateway as a Codex custom model provider", () => {
+    const config = configurePeakCodeGatewayProviderInCodexConfig(
+      [
+        'model = "gpt-5.5"',
+        'model_provider = "openai"',
+        "",
+        "[model_providers.openai]",
+        'name = "OpenAI"',
+      ].join("\n"),
+      {
+        baseUrl: "http://127.0.0.1:3773/gateway/openai/v1",
+        apiKey: "local-token",
+      },
+    );
+
+    expect(config).toContain('model_provider = "peakcode-gateway"');
+    expect(config).toContain("[model_providers.openai]");
+    expect(config).toContain("[model_providers.peakcode-gateway]");
+    expect(config).toContain('base_url = "http://127.0.0.1:3773/gateway/openai/v1"');
+    expect(config).toContain('env_key = "PEAKCODE_GATEWAY_API_KEY"');
+    expect(config).not.toContain('model_provider = "openai"');
+  });
+
+  it("writes gateway provider config into Peak Code's Codex home overlay", () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3-codex-env-"));
+    const runtimeHome = mkdtempSync(path.join(os.tmpdir(), "t3-runtime-home-"));
+    try {
+      writeFileSync(path.join(tempDir, "config.toml"), 'model_provider = "openai"\n', "utf8");
+
+      const env = buildCodexProcessEnv({
+        env: { PEAKCODE_HOME: runtimeHome },
+        homePath: tempDir,
+        platform: "darwin",
+        gatewayProvider: {
+          baseUrl: "http://127.0.0.1:3773/gateway/openai/v1",
+          apiKey: "local-token",
+        },
+      });
+
+      expect(env.CODEX_HOME).toBe(path.join(runtimeHome, "codex-home-overlay"));
+      expect(env.PEAKCODE_GATEWAY_API_KEY).toBe("local-token");
+      const codexHome = env.CODEX_HOME;
+      if (typeof codexHome !== "string") {
+        throw new Error("Expected CODEX_HOME to be set.");
+      }
+      const overlayConfig = readFileSync(path.join(codexHome, "config.toml"), "utf8");
+      expect(overlayConfig).toContain('model_provider = "peakcode-gateway"');
+      expect(overlayConfig).toContain(
+        'base_url = "http://127.0.0.1:3773/gateway/openai/v1"',
+      );
+      expect(overlayConfig).toContain('[plugins."peakcode-browser@local"]\nenabled = false');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+      rmSync(runtimeHome, { recursive: true, force: true });
+    }
   });
 });
 

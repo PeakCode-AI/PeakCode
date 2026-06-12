@@ -31,6 +31,13 @@ import {
 const CODEX_PROCESS_SHELL_ENV_NAMES = ["PATH", "SSH_AUTH_SOCK"] as const;
 const NODE_REPL_SANDBOX_ALLOWED_UNIX_SOCKETS = "NODE_REPL_SANDBOX_ALLOWED_UNIX_SOCKETS";
 const PEAKCODE_BROWSER_PLUGIN_CONFIG_HEADER = '[plugins."peakcode-browser@local"]';
+const PEAKCODE_GATEWAY_PROVIDER_ID = "peakcode-gateway";
+const PEAKCODE_GATEWAY_API_KEY_ENV = "PEAKCODE_GATEWAY_API_KEY";
+
+export interface CodexGatewayProviderConfig {
+  readonly baseUrl: string;
+  readonly apiKey: string;
+}
 
 export function resolveCodexBrowserUsePipePath(
   input: {
@@ -94,13 +101,79 @@ export function disablePeakCodeBrowserPluginInCodexConfig(config: string): strin
   return output.join("\n");
 }
 
+export function configurePeakCodeGatewayProviderInCodexConfig(
+  config: string,
+  gateway: CodexGatewayProviderConfig,
+): string {
+  const lines = config.split(/\r?\n/);
+  const output: string[] = [];
+  let insertedModelProvider = false;
+  let inTopLevel = true;
+  let inGatewayProviderSection = false;
+  let skippingGatewayProviderSection = false;
+
+  const insertModelProvider = () => {
+    if (insertedModelProvider) return;
+    output.push(`model_provider = "${PEAKCODE_GATEWAY_PROVIDER_ID}"`);
+    insertedModelProvider = true;
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const startsSection = trimmed.startsWith("[") && trimmed.endsWith("]");
+
+    if (startsSection) {
+      inTopLevel = false;
+      if (!insertedModelProvider) {
+        insertModelProvider();
+      }
+      inGatewayProviderSection =
+        trimmed === `[model_providers.${PEAKCODE_GATEWAY_PROVIDER_ID}]` ||
+        trimmed === `[model_providers."${PEAKCODE_GATEWAY_PROVIDER_ID}"]`;
+      skippingGatewayProviderSection = inGatewayProviderSection;
+      if (skippingGatewayProviderSection) {
+        continue;
+      }
+      output.push(line);
+      continue;
+    }
+
+    if (skippingGatewayProviderSection) {
+      continue;
+    }
+
+    if (inTopLevel && /^\s*model_provider\s*=/.test(line)) {
+      insertModelProvider();
+      continue;
+    }
+
+    output.push(line);
+  }
+
+  if (!insertedModelProvider) {
+    insertModelProvider();
+  }
+
+  if (output.length > 0 && output.at(-1)?.trim()) {
+    output.push("");
+  }
+  output.push(
+    `[model_providers.${PEAKCODE_GATEWAY_PROVIDER_ID}]`,
+    `base_url = "${gateway.baseUrl.replaceAll('"', '\\"')}"`,
+    `env_key = "${PEAKCODE_GATEWAY_API_KEY_ENV}"`,
+  );
+
+  return output.join("\n");
+}
+
 function preparePeakCodeCodexHomeOverlay(input: {
   readonly env: NodeJS.ProcessEnv;
   readonly homePath?: string;
+  readonly gatewayProvider?: CodexGatewayProviderConfig;
 }): string | undefined {
   const sourceHomePath = resolveBaseCodexHomePath(input.env, input.homePath);
   const overlayHomePath = resolvePeakCodeCodexHomeOverlayPath(input.env, sourceHomePath);
-  if (path.resolve(sourceHomePath) === path.resolve(overlayHomePath)) {
+  if (path.resolve(sourceHomePath) === path.resolve(overlayHomePath) && !input.gatewayProvider) {
     return undefined;
   }
 
@@ -126,9 +199,12 @@ function preparePeakCodeCodexHomeOverlay(input: {
 
   const sourceConfigPath = path.join(sourceHomePath, "config.toml");
   const sourceConfig = existsSync(sourceConfigPath) ? readFileSync(sourceConfigPath, "utf8") : "";
+  const overlayConfig = input.gatewayProvider
+    ? configurePeakCodeGatewayProviderInCodexConfig(sourceConfig, input.gatewayProvider)
+    : disablePeakCodeBrowserPluginInCodexConfig(sourceConfig);
   writeFileSync(
     path.join(overlayHomePath, "config.toml"),
-    disablePeakCodeBrowserPluginInCodexConfig(sourceConfig),
+    disablePeakCodeBrowserPluginInCodexConfig(overlayConfig),
     "utf8",
   );
 
@@ -141,19 +217,24 @@ export function buildCodexProcessEnv(
     readonly homePath?: string;
     readonly platform?: NodeJS.Platform;
     readonly readEnvironment?: ShellEnvironmentReader;
+    readonly gatewayProvider?: CodexGatewayProviderConfig;
   } = {},
 ): NodeJS.ProcessEnv {
   const baseEnv = { ...(input.env ?? process.env) };
-  const overlayHomePath = shouldDisablePeakCodeBrowserPlugin(baseEnv)
+  const overlayHomePath = shouldDisablePeakCodeBrowserPlugin(baseEnv) || input.gatewayProvider
     ? preparePeakCodeCodexHomeOverlay({
         env: baseEnv,
         ...(input.homePath ? { homePath: input.homePath } : {}),
+        ...(input.gatewayProvider ? { gatewayProvider: input.gatewayProvider } : {}),
       })
     : undefined;
   const effectiveEnv =
     overlayHomePath || input.homePath
       ? { ...baseEnv, CODEX_HOME: overlayHomePath ?? input.homePath }
       : baseEnv;
+  if (input.gatewayProvider) {
+    effectiveEnv[PEAKCODE_GATEWAY_API_KEY_ENV] = input.gatewayProvider.apiKey;
+  }
   const platform = input.platform ?? process.platform;
 
   if (platform === "darwin" || platform === "linux") {
