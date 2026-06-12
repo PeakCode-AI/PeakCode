@@ -419,6 +419,158 @@ describe("createHttpRequestHandler", () => {
     });
   });
 
+  it("proxies gateway Responses API requests through OpenAI-compatible chat completions", async () => {
+    const config = await makeConfig({ authToken: "desktop-secret" });
+    const observed: {
+      path?: string;
+      authorization?: string;
+      body?: Record<string, unknown>;
+    } = {};
+    await withServer(
+      async (req, res) => {
+        observed.path = req.url;
+        observed.authorization = req.headers.authorization;
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        }
+        observed.body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            id: "chatcmpl-test",
+            object: "chat.completion",
+            created: 123,
+            choices: [{ message: { role: "assistant", content: "hello from deepseek" } }],
+            usage: { total_tokens: 9 },
+          }),
+        );
+      },
+      async (upstreamOrigin) => {
+        const settings = makeGatewaySettings({
+          ...DEFAULT_SERVER_SETTINGS.gateway,
+          enabled: true,
+          upstreamProviders: [
+            {
+              provider: "deepseek",
+              displayName: "DeepSeek",
+              protocol: "openai-compatible",
+              baseUrl: `${upstreamOrigin}/v1`,
+              enabled: true,
+              defaultModel: "deepseek-v4-flash",
+              customModels: ["deepseek-v4-flash", "deepseek-v4-pro"],
+              modelAliases: {},
+            },
+          ],
+        });
+        const handler = await makeHandler(
+          config,
+          undefined,
+          makeGatewayDependencies({ settings, apiKey: "upstream-key" }),
+        );
+
+        await withServer(handler, async (origin) => {
+          const response = await fetch(`${origin}/gateway/openai/v1/responses`, {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer desktop-secret",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "deepseek/deepseek-v4-flash",
+              instructions: "Be concise.",
+              input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+              max_output_tokens: 128,
+            }),
+          });
+
+          expect(response.status).toBe(200);
+          await expect(response.json()).resolves.toMatchObject({
+            object: "response",
+            status: "completed",
+            output: [
+              {
+                type: "message",
+                role: "assistant",
+                content: [{ type: "output_text", text: "hello from deepseek" }],
+              },
+            ],
+          });
+        });
+      },
+    );
+
+    expect(observed.path).toBe("/v1/chat/completions");
+    expect(observed.authorization).toBe("Bearer upstream-key");
+    expect(observed.body).toMatchObject({
+      model: "deepseek-v4-flash",
+      messages: [
+        { role: "system", content: "Be concise." },
+        { role: "user", content: "hi" },
+      ],
+      max_tokens: 128,
+    });
+  });
+
+  it("translates streaming gateway Responses API requests to Responses SSE events", async () => {
+    const config = await makeConfig({ authToken: "desktop-secret" });
+    await withServer(
+      async (_req, res) => {
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        res.write('data: {"choices":[{"delta":{"content":"hello"}}]}\n\n');
+        res.write('data: {"choices":[{"delta":{"content":" world"}}]}\n\n');
+        res.end("data: [DONE]\n\n");
+      },
+      async (upstreamOrigin) => {
+        const settings = makeGatewaySettings({
+          ...DEFAULT_SERVER_SETTINGS.gateway,
+          enabled: true,
+          upstreamProviders: [
+            {
+              provider: "deepseek",
+              displayName: "DeepSeek",
+              protocol: "openai-compatible",
+              baseUrl: `${upstreamOrigin}/v1`,
+              enabled: true,
+              defaultModel: "deepseek-v4-flash",
+              customModels: ["deepseek-v4-flash"],
+              modelAliases: {},
+            },
+          ],
+        });
+        const handler = await makeHandler(
+          config,
+          undefined,
+          makeGatewayDependencies({ settings, apiKey: "upstream-key" }),
+        );
+
+        await withServer(handler, async (origin) => {
+          const response = await fetch(`${origin}/gateway/openai/v1/responses`, {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer desktop-secret",
+              "Content-Type": "application/json",
+              Accept: "text/event-stream",
+            },
+            body: JSON.stringify({
+              model: "deepseek/deepseek-v4-flash",
+              input: "hi",
+              stream: true,
+            }),
+          });
+
+          expect(response.status).toBe(200);
+          expect(response.headers.get("content-type")).toContain("text/event-stream");
+          const body = await response.text();
+          expect(body).toContain("event: response.output_text.delta");
+          expect(body).toContain('"delta":"hello"');
+          expect(body).toContain('"text":"hello world"');
+          expect(body).toContain("event: response.completed");
+        });
+      },
+    );
+  });
+
   it("rejects gateway chat completions when the selected upstream API key is missing", async () => {
     const config = await makeConfig({ authToken: "desktop-secret" });
     const settings = makeGatewaySettings({

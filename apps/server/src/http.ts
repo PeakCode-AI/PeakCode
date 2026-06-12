@@ -1,4 +1,5 @@
 import type http from "node:http";
+import { randomUUID } from "node:crypto";
 
 import Mime from "@effect/platform-node/Mime";
 import {
@@ -319,6 +320,10 @@ function joinGatewayUrl(baseUrl: string, suffix: string): string {
   return `${baseUrl.replace(/\/+$/u, "")}/${suffix.replace(/^\/+/u, "")}`;
 }
 
+function makeGatewayJsonResponse(body: unknown, status = 200): Response {
+  return Response.json(body, { status });
+}
+
 function resolveGatewayUpstream(input: {
   readonly config: GatewayConfig;
   readonly model: string | null;
@@ -465,6 +470,326 @@ async function proxyGatewayChatCompletion(input: {
   });
 }
 
+function readGatewayText(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (!isRecord(value)) return null;
+  const text = value.text;
+  if (typeof text === "string") return text;
+  const content = value.content;
+  if (typeof content === "string") return content;
+  return null;
+}
+
+function flattenGatewayContentText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) {
+    return readGatewayText(content) ?? "";
+  }
+  return content
+    .flatMap((part) => {
+      const text = readGatewayText(part);
+      return text ? [text] : [];
+    })
+    .join("\n");
+}
+
+function responseInputToChatMessages(payload: Record<string, unknown>): Record<string, unknown>[] {
+  const messages: Record<string, unknown>[] = [];
+  if (typeof payload.instructions === "string" && payload.instructions.trim().length > 0) {
+    messages.push({ role: "system", content: payload.instructions });
+  }
+
+  const input = payload.input;
+  if (typeof input === "string") {
+    messages.push({ role: "user", content: input });
+    return messages;
+  }
+
+  if (!Array.isArray(input)) return messages;
+
+  for (const item of input) {
+    if (!isRecord(item)) continue;
+    const roleValue = typeof item.role === "string" ? item.role : "user";
+    const role = roleValue === "developer" ? "system" : roleValue;
+    const content = flattenGatewayContentText(item.content ?? item.text);
+    if (content.length > 0) {
+      messages.push({ role, content });
+      continue;
+    }
+    if (item.type === "function_call_output" && typeof item.output === "string") {
+      messages.push({ role: "tool", tool_call_id: item.call_id, content: item.output });
+    }
+  }
+
+  return messages;
+}
+
+function responsesToolsToChatTools(tools: unknown): unknown {
+  if (!Array.isArray(tools)) return undefined;
+  const chatTools = tools.flatMap((tool) => {
+    if (!isRecord(tool) || tool.type !== "function" || typeof tool.name !== "string") return [];
+    return [
+      {
+        type: "function",
+        function: {
+          name: tool.name,
+          description: typeof tool.description === "string" ? tool.description : undefined,
+          parameters: isRecord(tool.parameters) ? tool.parameters : undefined,
+          strict: typeof tool.strict === "boolean" ? tool.strict : undefined,
+        },
+      },
+    ];
+  });
+  return chatTools.length > 0 ? chatTools : undefined;
+}
+
+function responsePayloadToChatPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const chatPayload: Record<string, unknown> = {
+    model: payload.model,
+    messages: responseInputToChatMessages(payload),
+    stream: payload.stream === true,
+  };
+  for (const key of ["temperature", "top_p", "presence_penalty", "frequency_penalty"] as const) {
+    if (payload[key] !== undefined) chatPayload[key] = payload[key];
+  }
+  if (payload.max_output_tokens !== undefined) chatPayload.max_tokens = payload.max_output_tokens;
+  const tools = responsesToolsToChatTools(payload.tools);
+  if (tools) chatPayload.tools = tools;
+  if (payload.tool_choice !== undefined) chatPayload.tool_choice = payload.tool_choice;
+  return chatPayload;
+}
+
+function makeResponseId(source: unknown): string {
+  return typeof source === "string" && source.length > 0 ? source : `resp_${randomUUID()}`;
+}
+
+function chatMessageToResponseOutput(message: unknown): unknown[] {
+  if (!isRecord(message)) return [];
+  const output: unknown[] = [];
+  const content = flattenGatewayContentText(message.content);
+  if (content.length > 0) {
+    output.push({
+      id: `msg_${randomUUID()}`,
+      type: "message",
+      status: "completed",
+      role: "assistant",
+      content: [{ type: "output_text", text: content, annotations: [] }],
+    });
+  }
+  if (Array.isArray(message.tool_calls)) {
+    for (const toolCall of message.tool_calls) {
+      if (!isRecord(toolCall) || !isRecord(toolCall.function)) continue;
+      output.push({
+        id: typeof toolCall.id === "string" ? toolCall.id : `fc_${randomUUID()}`,
+        type: "function_call",
+        status: "completed",
+        call_id: typeof toolCall.id === "string" ? toolCall.id : `call_${randomUUID()}`,
+        name: toolCall.function.name,
+        arguments: toolCall.function.arguments,
+      });
+    }
+  }
+  return output;
+}
+
+async function chatCompletionToResponsePayload(response: Response, requestedModel: unknown): Promise<Response> {
+  const payload = await response.json();
+  if (!response.ok) return makeGatewayJsonResponse(payload, response.status);
+  const firstChoice =
+    isRecord(payload) && Array.isArray(payload.choices) && isRecord(payload.choices[0])
+      ? payload.choices[0]
+      : null;
+  const responsePayload = {
+    id: makeResponseId(isRecord(payload) ? payload.id : null),
+    object: "response",
+    created_at:
+      isRecord(payload) && typeof payload.created === "number"
+        ? payload.created
+        : Math.floor(Date.now() / 1000),
+    status: "completed",
+    model:
+      typeof requestedModel === "string"
+        ? requestedModel
+        : isRecord(payload) && typeof payload.model === "string"
+          ? payload.model
+          : undefined,
+    output: firstChoice ? chatMessageToResponseOutput(firstChoice.message) : [],
+    usage: isRecord(payload) ? payload.usage : undefined,
+  };
+  return makeGatewayJsonResponse(responsePayload, response.status);
+}
+
+function encodeGatewaySseEvent(event: string, data: unknown): string {
+  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+
+function streamChatCompletionAsResponse(input: {
+  readonly upstreamResponse: Response;
+  readonly requestedModel: unknown;
+}): Response {
+  const responseId = `resp_${randomUUID()}`;
+  const itemId = `msg_${randomUUID()}`;
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const upstreamBody = input.upstreamResponse.body;
+  if (!upstreamBody) {
+    return makeGatewayJsonResponse(
+      { error: { message: "Gateway upstream stream was empty.", type: "peakcode_gateway_error" } },
+      502,
+    );
+  }
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (event: string, data: unknown) =>
+        controller.enqueue(encoder.encode(encodeGatewaySseEvent(event, data)));
+      send("response.created", {
+        type: "response.created",
+        response: {
+          id: responseId,
+          object: "response",
+          created_at: Math.floor(Date.now() / 1000),
+          status: "in_progress",
+          model: input.requestedModel,
+          output: [],
+        },
+      });
+      send("response.output_item.added", {
+        type: "response.output_item.added",
+        output_index: 0,
+        item: { id: itemId, type: "message", status: "in_progress", role: "assistant", content: [] },
+      });
+      send("response.content_part.added", {
+        type: "response.content_part.added",
+        item_id: itemId,
+        output_index: 0,
+        content_index: 0,
+        part: { type: "output_text", text: "", annotations: [] },
+      });
+
+      const reader = upstreamBody.getReader();
+      let buffer = "";
+      let text = "";
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split("\n\n");
+          buffer = events.pop() ?? "";
+          for (const rawEvent of events) {
+            const dataLines = rawEvent
+              .split("\n")
+              .filter((line) => line.startsWith("data:"))
+              .map((line) => line.slice("data:".length).trim());
+            const data = dataLines.join("\n");
+            if (!data || data === "[DONE]") continue;
+            const chunk = JSON.parse(data) as unknown;
+            const choices = isRecord(chunk) && Array.isArray(chunk.choices) ? chunk.choices : [];
+            for (const choice of choices) {
+              if (!isRecord(choice) || !isRecord(choice.delta)) continue;
+              const delta = choice.delta.content;
+              if (typeof delta !== "string" || delta.length === 0) continue;
+              text += delta;
+              send("response.output_text.delta", {
+                type: "response.output_text.delta",
+                response_id: responseId,
+                item_id: itemId,
+                output_index: 0,
+                content_index: 0,
+                delta,
+              });
+            }
+          }
+        }
+        send("response.output_text.done", {
+          type: "response.output_text.done",
+          response_id: responseId,
+          item_id: itemId,
+          output_index: 0,
+          content_index: 0,
+          text,
+        });
+        send("response.content_part.done", {
+          type: "response.content_part.done",
+          item_id: itemId,
+          output_index: 0,
+          content_index: 0,
+          part: { type: "output_text", text, annotations: [] },
+        });
+        send("response.output_item.done", {
+          type: "response.output_item.done",
+          output_index: 0,
+          item: {
+            id: itemId,
+            type: "message",
+            status: "completed",
+            role: "assistant",
+            content: [{ type: "output_text", text, annotations: [] }],
+          },
+        });
+        send("response.completed", {
+          type: "response.completed",
+          response: {
+            id: responseId,
+            object: "response",
+            created_at: Math.floor(Date.now() / 1000),
+            status: "completed",
+            model: input.requestedModel,
+            output: [
+              {
+                id: itemId,
+                type: "message",
+                status: "completed",
+                role: "assistant",
+                content: [{ type: "output_text", text, annotations: [] }],
+              },
+            ],
+          },
+        });
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      } catch (cause) {
+        controller.error(cause);
+      } finally {
+        reader.releaseLock();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    status: input.upstreamResponse.status,
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+}
+
+async function proxyGatewayResponse(input: {
+  readonly gatewayConfig: GatewayConfig;
+  readonly payload: Record<string, unknown>;
+  readonly apiKey: string;
+  readonly accept?: string | undefined;
+}): Promise<Response> {
+  const chatPayload = responsePayloadToChatPayload(input.payload);
+  const upstreamResponse = await proxyGatewayChatCompletion({
+    gatewayConfig: input.gatewayConfig,
+    payload: chatPayload,
+    apiKey: input.apiKey,
+    accept: chatPayload.stream === true ? "text/event-stream" : input.accept,
+  });
+  if (!upstreamResponse.ok) return upstreamResponse;
+  if (chatPayload.stream === true) {
+    return streamChatCompletionAsResponse({
+      upstreamResponse,
+      requestedModel: input.payload.model,
+    });
+  }
+  return chatCompletionToResponsePayload(upstreamResponse, input.payload.model);
+}
+
 const gatewayEffectRouteLayer = HttpRouter.add(
   "*",
   "/gateway/openai/v1/*",
@@ -486,11 +811,13 @@ const gatewayEffectRouteLayer = HttpRouter.add(
       return HttpServerResponse.jsonUnsafe(makeGatewayModelsPayload(gatewayConfig));
     }
 
-    if (request.method !== "POST" || url.pathname !== "/gateway/openai/v1/chat/completions") {
+    const isChatCompletions = url.pathname === "/gateway/openai/v1/chat/completions";
+    const isResponses = url.pathname === "/gateway/openai/v1/responses";
+    if (request.method !== "POST" || (!isChatCompletions && !isResponses)) {
       return HttpServerResponse.text("Not Found", { status: 404 });
     }
 
-    const payload = yield* readEffectJson(request, "Invalid gateway chat completions payload.").pipe(
+    const payload = yield* readEffectJson(request, "Invalid gateway OpenAI-compatible payload.").pipe(
       Effect.mapError(() => ({ message: "Invalid JSON request body.", status: 400 as const })),
     );
     if (!isRecord(payload)) {
@@ -522,12 +849,19 @@ const gatewayEffectRouteLayer = HttpRouter.add(
       : request.headers.accept;
     const upstreamResponse = yield* Effect.tryPromise({
       try: () =>
-        proxyGatewayChatCompletion({
-          gatewayConfig,
-          payload,
-          apiKey,
-          accept: acceptHeader,
-        }),
+        isResponses
+          ? proxyGatewayResponse({
+              gatewayConfig,
+              payload,
+              apiKey,
+              accept: acceptHeader,
+            })
+          : proxyGatewayChatCompletion({
+              gatewayConfig,
+              payload,
+              apiKey,
+              accept: acceptHeader,
+            }),
       catch: (cause) => ({
         message: cause instanceof Error ? cause.message : "Gateway upstream request failed.",
         status: 502 as const,
@@ -1103,10 +1437,9 @@ const serveGatewayOpenAi = Effect.fn(function* (input: {
     return;
   }
 
-  if (
-    input.req.method !== "POST" ||
-    input.url.pathname !== "/gateway/openai/v1/chat/completions"
-  ) {
+  const isChatCompletions = input.url.pathname === "/gateway/openai/v1/chat/completions";
+  const isResponses = input.url.pathname === "/gateway/openai/v1/responses";
+  if (input.req.method !== "POST" || (!isChatCompletions && !isResponses)) {
     input.respond(404, { "Content-Type": "text/plain" }, "Not Found");
     return;
   }
@@ -1192,12 +1525,19 @@ const serveGatewayOpenAi = Effect.fn(function* (input: {
     : input.req.headers.accept;
   const upstreamResponse = yield* Effect.tryPromise({
     try: () =>
-      proxyGatewayChatCompletion({
-        gatewayConfig,
-        payload,
-        apiKey,
-        accept: acceptHeader,
-      }),
+      isResponses
+        ? proxyGatewayResponse({
+            gatewayConfig,
+            payload,
+            apiKey,
+            accept: acceptHeader,
+          })
+        : proxyGatewayChatCompletion({
+            gatewayConfig,
+            payload,
+            apiKey,
+            accept: acceptHeader,
+          }),
     catch: (cause) =>
       cause instanceof Error ? cause : new Error("Gateway upstream request failed."),
   }).pipe(
