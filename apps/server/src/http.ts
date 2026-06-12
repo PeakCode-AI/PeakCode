@@ -19,10 +19,16 @@ import {
   resolveAttachmentRelativePath,
 } from "./attachmentPaths";
 import { resolveAttachmentPathById } from "./attachmentStore.ts";
-import { authErrorResponse, makeEffectAuthRequest, serveAuthHttpRoute } from "./auth/http";
+import {
+  authErrorResponse,
+  makeEffectAuthRequest,
+  makeNodeAuthRequest,
+  serveAuthHttpRoute,
+} from "./auth/http";
 import { ServerAuth } from "./auth/Services/ServerAuth";
 import { ServerSecretStore } from "./auth/Services/ServerSecretStore";
 import type { ServerAuthShape } from "./auth/Services/ServerAuth";
+import type { ServerSecretStoreShape } from "./auth/Services/ServerSecretStore";
 import type { SessionCredentialServiceShape } from "./auth/Services/SessionCredentialService";
 import { SessionCredentialService } from "./auth/Services/SessionCredentialService";
 import { deriveAuthClientMetadata } from "./auth/utils";
@@ -32,6 +38,7 @@ import type { ProjectFaviconResolverShape } from "./project/Services/ProjectFavi
 import { ProjectFaviconResolver } from "./project/Services/ProjectFaviconResolver";
 import type { ServerReadiness } from "./server/readiness";
 import { ServerSettingsService } from "./serverSettings";
+import type { ServerSettingsShape } from "./serverSettings";
 
 const PROJECT_FAVICON_CACHE_CONTROL = "public, max-age=3600";
 const decodeBootstrapInput = Schema.decodeUnknownEffect(AuthBootstrapInput);
@@ -81,7 +88,10 @@ const requireGatewayRequestAccess = Effect.gen(function* () {
   const request = yield* HttpServerRequest.HttpServerRequest;
   const config = yield* ServerConfig;
   const url = HttpServerRequest.toURL(request);
-  if (url && isLegacyTokenAuthorized({ config, url })) {
+  if (
+    (url && isLegacyTokenAuthorized({ config, url })) ||
+    isLegacyBearerAuthorized({ config, headers: request.headers })
+  ) {
     return;
   }
   const serverAuth = yield* ServerAuth;
@@ -94,6 +104,17 @@ export function isLegacyTokenAuthorized(input: {
 }): boolean {
   const legacyToken = input.url.searchParams.get("token");
   return !input.config.authToken || legacyToken === input.config.authToken;
+}
+
+export function isLegacyBearerAuthorized(input: {
+  readonly config: ServerConfigShape;
+  readonly headers: Record<string, string | string[] | undefined>;
+}): boolean {
+  if (!input.config.authToken) return true;
+  const authorization = input.headers.authorization;
+  const header = Array.isArray(authorization) ? authorization.join(", ") : authorization;
+  if (typeof header !== "string" || !header.startsWith("Bearer ")) return false;
+  return header.slice("Bearer ".length).trim() === input.config.authToken;
 }
 
 function encodeCookie(input: {
@@ -335,6 +356,99 @@ function gatewayErrorResponse(message: string, status: number) {
   );
 }
 
+function makeGatewayModelsPayload(gatewayConfig: GatewayConfig) {
+  return {
+    object: "list",
+    data: gatewayConfig.upstreamProviders.flatMap((upstream) => {
+      if (!upstream.enabled) return [];
+      const modelIds = new Set<string>(upstream.customModels);
+      if (upstream.defaultModel) modelIds.add(upstream.defaultModel);
+      return Array.from(modelIds).map((model) => ({
+        id: `${upstream.provider}/${model}`,
+        object: "model",
+        created: 0,
+        owned_by: upstream.provider,
+      }));
+    }),
+  };
+}
+
+async function proxyGatewayChatCompletion(input: {
+  readonly gatewayConfig: GatewayConfig;
+  readonly payload: Record<string, unknown>;
+  readonly apiKey: string;
+  readonly accept?: string | undefined;
+}): Promise<Response> {
+  const requestedModel = typeof input.payload.model === "string" ? input.payload.model.trim() : null;
+  const { upstream, resolvedModel } = resolveGatewayUpstream({
+    config: input.gatewayConfig,
+    model: requestedModel,
+  });
+  if (!upstream) {
+    return Response.json(
+      { error: { message: "No gateway upstream provider is configured.", type: "peakcode_gateway_error" } },
+      { status: 400 },
+    );
+  }
+  if (!upstream.enabled) {
+    return Response.json(
+      {
+        error: {
+          message: `Gateway upstream provider '${upstream.provider}' is disabled.`,
+          type: "peakcode_gateway_error",
+        },
+      },
+      { status: 400 },
+    );
+  }
+  if (upstream.protocol !== "openai-compatible") {
+    return Response.json(
+      {
+        error: {
+          message: `Gateway upstream provider '${upstream.provider}' is not OpenAI-compatible.`,
+          type: "peakcode_gateway_error",
+        },
+      },
+      { status: 400 },
+    );
+  }
+  if (!resolvedModel) {
+    return Response.json(
+      {
+        error: {
+          message: `Gateway upstream provider '${upstream.provider}' has no model configured.`,
+          type: "peakcode_gateway_error",
+        },
+      },
+      { status: 400 },
+    );
+  }
+  if (upstream.baseUrl.trim().length === 0) {
+    return Response.json(
+      {
+        error: {
+          message: `Gateway upstream provider '${upstream.provider}' has no base URL configured.`,
+          type: "peakcode_gateway_error",
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  return fetch(joinGatewayUrl(upstream.baseUrl, "/chat/completions"), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.apiKey}`,
+      "Content-Type": "application/json",
+      Accept: input.accept ?? "application/json",
+    },
+    body: JSON.stringify({
+      ...input.payload,
+      model: resolvedModel,
+    }),
+  });
+}
+
 const gatewayEffectRouteLayer = HttpRouter.add(
   "*",
   "/gateway/openai/v1/*",
@@ -353,18 +467,7 @@ const gatewayEffectRouteLayer = HttpRouter.add(
     }
 
     if (request.method === "GET" && url.pathname === "/gateway/openai/v1/models") {
-      const data = gatewayConfig.upstreamProviders.flatMap((upstream) => {
-        if (!upstream.enabled) return [];
-        const modelIds = new Set<string>(upstream.customModels);
-        if (upstream.defaultModel) modelIds.add(upstream.defaultModel);
-        return Array.from(modelIds).map((model) => ({
-          id: `${upstream.provider}/${model}`,
-          object: "model",
-          created: 0,
-          owned_by: upstream.provider,
-        }));
-      });
-      return HttpServerResponse.jsonUnsafe({ object: "list", data });
+      return HttpServerResponse.jsonUnsafe(makeGatewayModelsPayload(gatewayConfig));
     }
 
     if (request.method !== "POST" || url.pathname !== "/gateway/openai/v1/chat/completions") {
@@ -379,7 +482,7 @@ const gatewayEffectRouteLayer = HttpRouter.add(
     }
 
     const requestedModel = typeof payload.model === "string" ? payload.model.trim() : null;
-    const { upstream, resolvedModel } = resolveGatewayUpstream({
+    const { upstream } = resolveGatewayUpstream({
       config: gatewayConfig,
       model: requestedModel,
     });
@@ -389,25 +492,6 @@ const gatewayEffectRouteLayer = HttpRouter.add(
     if (!upstream.enabled) {
       return gatewayErrorResponse(`Gateway upstream provider '${upstream.provider}' is disabled.`, 400);
     }
-    if (upstream.protocol !== "openai-compatible") {
-      return gatewayErrorResponse(
-        `Gateway upstream provider '${upstream.provider}' is not OpenAI-compatible.`,
-        400,
-      );
-    }
-    if (!resolvedModel) {
-      return gatewayErrorResponse(
-        `Gateway upstream provider '${upstream.provider}' has no model configured.`,
-        400,
-      );
-    }
-    if (upstream.baseUrl.trim().length === 0) {
-      return gatewayErrorResponse(
-        `Gateway upstream provider '${upstream.provider}' has no base URL configured.`,
-        400,
-      );
-    }
-
     const apiKeyBytes = yield* secretStore.get(upstreamSecretName(upstream.provider));
     const apiKey = apiKeyBytes ? new TextDecoder().decode(apiKeyBytes).trim() : "";
     if (apiKey.length === 0) {
@@ -417,19 +501,16 @@ const gatewayEffectRouteLayer = HttpRouter.add(
       );
     }
 
+    const acceptHeader = Array.isArray(request.headers.accept)
+      ? request.headers.accept.join(", ")
+      : request.headers.accept;
     const upstreamResponse = yield* Effect.tryPromise({
       try: () =>
-        fetch(joinGatewayUrl(upstream.baseUrl, "/chat/completions"), {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-            "Accept": request.headers.accept ?? "application/json",
-          },
-          body: JSON.stringify({
-            ...payload,
-            model: resolvedModel,
-          }),
+        proxyGatewayChatCompletion({
+          gatewayConfig,
+          payload,
+          apiKey,
+          accept: acceptHeader,
         }),
       catch: (cause) => ({
         message: cause instanceof Error ? cause.message : "Gateway upstream request failed.",
@@ -689,6 +770,8 @@ export interface HttpRequestHandlerOptions {
   readonly path: Path.Path;
   readonly serverAuth?: ServerAuthShape;
   readonly sessionCredentials?: Pick<SessionCredentialServiceShape, "cookieName">;
+  readonly serverSettings?: Pick<ServerSettingsShape, "getSettings">;
+  readonly secretStore?: Pick<ServerSecretStoreShape, "get">;
 }
 
 function makeResponder(res: http.ServerResponse): Respond {
@@ -706,6 +789,8 @@ export function createHttpRequestHandler({
   path,
   serverAuth,
   sessionCredentials,
+  serverSettings,
+  secretStore,
 }: HttpRequestHandlerOptions): http.RequestListener {
   const { port, staticDir, devUrl } = serverConfig;
 
@@ -757,6 +842,23 @@ export function createHttpRequestHandler({
             sessionCredentials,
           });
           if (handled) return;
+        }
+
+        if (url.pathname.startsWith("/gateway/openai/v1/")) {
+          if (!serverSettings || !secretStore) {
+            respond(503, { "Content-Type": "text/plain" }, "Gateway service unavailable");
+            return;
+          }
+          yield* serveGatewayOpenAi({
+            url,
+            req,
+            respond,
+            serverConfig,
+            serverAuth,
+            serverSettings,
+            secretStore,
+          });
+          return;
         }
 
         if (url.pathname.startsWith(ATTACHMENTS_ROUTE_PREFIX)) {
@@ -910,6 +1012,203 @@ const serveAttachment = Effect.fn(function* (input: {
   if (!input.res.writableEnded) {
     input.res.end();
   }
+});
+
+async function readNodeRequestBody(req: http.IncomingMessage, limitBytes = 8 * 1024 * 1024) {
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.byteLength;
+    if (totalBytes > limitBytes) {
+      throw new Error("Request body is too large.");
+    }
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+const serveGatewayOpenAi = Effect.fn(function* (input: {
+  readonly url: URL;
+  readonly req: http.IncomingMessage;
+  readonly respond: Respond;
+  readonly serverConfig: ServerConfigShape;
+  readonly serverAuth?: ServerAuthShape;
+  readonly serverSettings: Pick<ServerSettingsShape, "getSettings">;
+  readonly secretStore: Pick<ServerSecretStoreShape, "get">;
+}) {
+  if (
+    !isLegacyTokenAuthorized({ config: input.serverConfig, url: input.url }) &&
+    !isLegacyBearerAuthorized({ config: input.serverConfig, headers: input.req.headers })
+  ) {
+    if (!input.serverAuth) {
+      input.respond(
+        401,
+        { "Content-Type": "application/json; charset=utf-8" },
+        JSON.stringify({
+          error: { message: "Authentication required.", type: "peakcode_gateway_error" },
+        }),
+      );
+      return;
+    }
+    const authExit = yield* input.serverAuth
+      .authenticateHttpRequest(makeNodeAuthRequest({ req: input.req, url: input.url }))
+      .pipe(Effect.exit);
+    if (Exit.isFailure(authExit)) {
+      input.respond(
+        401,
+        { "Content-Type": "application/json; charset=utf-8" },
+        JSON.stringify({
+          error: { message: "Authentication required.", type: "peakcode_gateway_error" },
+        }),
+      );
+      return;
+    }
+  }
+
+  const gatewayConfig = (yield* input.serverSettings.getSettings).gateway;
+  if (!gatewayConfig.enabled) {
+    input.respond(
+      503,
+      { "Content-Type": "application/json; charset=utf-8" },
+      JSON.stringify({
+        error: { message: "PeakCode gateway is disabled.", type: "peakcode_gateway_error" },
+      }),
+    );
+    return;
+  }
+
+  if (input.req.method === "GET" && input.url.pathname === "/gateway/openai/v1/models") {
+    input.respond(
+      200,
+      { "Content-Type": "application/json; charset=utf-8" },
+      JSON.stringify(makeGatewayModelsPayload(gatewayConfig)),
+    );
+    return;
+  }
+
+  if (
+    input.req.method !== "POST" ||
+    input.url.pathname !== "/gateway/openai/v1/chat/completions"
+  ) {
+    input.respond(404, { "Content-Type": "text/plain" }, "Not Found");
+    return;
+  }
+
+  const rawBody = yield* Effect.tryPromise({
+    try: () => readNodeRequestBody(input.req),
+    catch: () => new Error("Invalid JSON request body."),
+  }).pipe(
+    Effect.catch(() => {
+      input.respond(
+        400,
+        { "Content-Type": "application/json; charset=utf-8" },
+        JSON.stringify({
+          error: { message: "Invalid JSON request body.", type: "peakcode_gateway_error" },
+        }),
+      );
+      return Effect.succeed(null);
+    }),
+  );
+  if (rawBody === null) return;
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    input.respond(
+      400,
+      { "Content-Type": "application/json; charset=utf-8" },
+      JSON.stringify({
+        error: { message: "Invalid JSON request body.", type: "peakcode_gateway_error" },
+      }),
+    );
+    return;
+  }
+  if (!isRecord(payload)) {
+    input.respond(
+      400,
+      { "Content-Type": "application/json; charset=utf-8" },
+      JSON.stringify({
+        error: {
+          message: "Request body must be a JSON object.",
+          type: "peakcode_gateway_error",
+        },
+      }),
+    );
+    return;
+  }
+
+  const requestedModel = typeof payload.model === "string" ? payload.model.trim() : null;
+  const { upstream } = resolveGatewayUpstream({ config: gatewayConfig, model: requestedModel });
+  if (!upstream) {
+    input.respond(
+      400,
+      { "Content-Type": "application/json; charset=utf-8" },
+      JSON.stringify({
+        error: {
+          message: "No gateway upstream provider is configured.",
+          type: "peakcode_gateway_error",
+        },
+      }),
+    );
+    return;
+  }
+
+  const apiKeyBytes = yield* input.secretStore.get(upstreamSecretName(upstream.provider));
+  const apiKey = apiKeyBytes ? new TextDecoder().decode(apiKeyBytes).trim() : "";
+  if (apiKey.length === 0) {
+    input.respond(
+      401,
+      { "Content-Type": "application/json; charset=utf-8" },
+      JSON.stringify({
+        error: {
+          message: `Gateway upstream provider '${upstream.provider}' has no API key configured.`,
+          type: "peakcode_gateway_error",
+        },
+      }),
+    );
+    return;
+  }
+
+  const acceptHeader = Array.isArray(input.req.headers.accept)
+    ? input.req.headers.accept.join(", ")
+    : input.req.headers.accept;
+  const upstreamResponse = yield* Effect.tryPromise({
+    try: () =>
+      proxyGatewayChatCompletion({
+        gatewayConfig,
+        payload,
+        apiKey,
+        accept: acceptHeader,
+      }),
+    catch: (cause) =>
+      cause instanceof Error ? cause : new Error("Gateway upstream request failed."),
+  }).pipe(
+    Effect.catch((cause) => {
+      input.respond(
+        502,
+        { "Content-Type": "application/json; charset=utf-8" },
+        JSON.stringify({
+          error: {
+            message: cause.message || "Gateway upstream request failed.",
+            type: "peakcode_gateway_error",
+          },
+        }),
+      );
+      return Effect.succeed(null);
+    }),
+  );
+  if (upstreamResponse === null) return;
+
+  const responseBody = yield* Effect.promise(() =>
+    upstreamResponse.arrayBuffer().then((buffer) => new Uint8Array(buffer)),
+  );
+  const headers: Record<string, string | string[]> = {};
+  upstreamResponse.headers.forEach((value, key) => {
+    headers[key] = value;
+  });
+  input.respond(upstreamResponse.status, headers, responseBody);
 });
 
 const serveStaticAsset = Effect.fn(function* (input: {

@@ -4,14 +4,21 @@ import os from "node:os";
 import path from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { DEFAULT_SERVER_SETTINGS, type ServerSettings } from "@peakcode/contracts";
 import { DateTime, Effect, FileSystem, Path } from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createHttpRequestHandler, isLegacyTokenAuthorized } from "./http";
+import {
+  createHttpRequestHandler,
+  isLegacyBearerAuthorized,
+  isLegacyTokenAuthorized,
+} from "./http";
 import type { ServerAuthShape } from "./auth/Services/ServerAuth";
+import type { ServerSecretStoreShape } from "./auth/Services/ServerSecretStore";
 import { deriveServerPaths, type ServerConfigShape } from "./config";
 import type { ProjectFaviconResolverShape } from "./project/Services/ProjectFaviconResolver";
 import type { ServerReadiness } from "./server/readiness";
+import type { ServerSettingsShape } from "./serverSettings";
 
 const tempDirs: string[] = [];
 
@@ -73,6 +80,10 @@ async function makeHandler(
     readonly serverAuth: ServerAuthShape;
     readonly cookieName: string;
   },
+  gateway?: {
+    readonly serverSettings: Pick<ServerSettingsShape, "getSettings">;
+    readonly secretStore: Pick<ServerSecretStoreShape, "get">;
+  },
 ): Promise<http.RequestListener> {
   const services = await Effect.runPromise(
     Effect.gen(function* () {
@@ -94,7 +105,38 @@ async function makeHandler(
           sessionCredentials: { cookieName: auth.cookieName },
         }
       : {}),
+    ...(gateway ?? {}),
   });
+}
+
+function makeGatewaySettings(gateway: ServerSettings["gateway"]): ServerSettings {
+  return {
+    ...DEFAULT_SERVER_SETTINGS,
+    gateway,
+  };
+}
+
+function makeGatewayDependencies(input: {
+  readonly settings: ServerSettings;
+  readonly apiKey?: string | null;
+}): {
+  readonly serverSettings: Pick<ServerSettingsShape, "getSettings">;
+  readonly secretStore: Pick<ServerSecretStoreShape, "get">;
+} {
+  const encoder = new TextEncoder();
+  return {
+    serverSettings: {
+      getSettings: Effect.succeed(input.settings),
+    },
+    secretStore: {
+      get: (name) =>
+        Effect.succeed(
+          name === "gateway.upstream.deepseek.apiKey" && input.apiKey
+            ? encoder.encode(input.apiKey)
+            : null,
+        ),
+    },
+  };
 }
 
 function makeAuthDescriptor() {
@@ -198,6 +240,158 @@ describe("createHttpRequestHandler", () => {
         url: new URL("http://127.0.0.1:3773/attachments/attachment-id?token=wrong"),
       }),
     ).toBe(false);
+  });
+
+  it("recognizes the desktop startup token from OpenAI-compatible bearer requests", async () => {
+    const config = await makeConfig({ authToken: "desktop-secret" });
+
+    expect(
+      isLegacyBearerAuthorized({
+        config,
+        headers: { authorization: "Bearer desktop-secret" },
+      }),
+    ).toBe(true);
+    expect(
+      isLegacyBearerAuthorized({
+        config,
+        headers: { authorization: "Bearer wrong" },
+      }),
+    ).toBe(false);
+  });
+
+  it("serves gateway OpenAI-compatible model metadata", async () => {
+    const config = await makeConfig({ authToken: "desktop-secret" });
+    const settings = makeGatewaySettings({
+      ...DEFAULT_SERVER_SETTINGS.gateway,
+      enabled: true,
+    });
+    const handler = await makeHandler(
+      config,
+      undefined,
+      makeGatewayDependencies({ settings, apiKey: "upstream-key" }),
+    );
+
+    await withServer(handler, async (origin) => {
+      const response = await fetch(`${origin}/gateway/openai/v1/models`, {
+        headers: { Authorization: "Bearer desktop-secret" },
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        object: "list",
+        data: expect.arrayContaining([
+          expect.objectContaining({ id: "deepseek/deepseek-chat", object: "model" }),
+          expect.objectContaining({ id: "deepseek/deepseek-reasoner", object: "model" }),
+        ]),
+      });
+    });
+  });
+
+  it("proxies gateway OpenAI-compatible chat completions to the selected upstream", async () => {
+    const config = await makeConfig({ authToken: "desktop-secret" });
+    const observed: {
+      path?: string;
+      authorization?: string;
+      body?: Record<string, unknown>;
+    } = {};
+    await withServer(
+      async (req, res) => {
+        observed.path = req.url;
+        observed.authorization = req.headers.authorization;
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        }
+        observed.body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ id: "chatcmpl-test", object: "chat.completion", choices: [] }));
+      },
+      async (upstreamOrigin) => {
+        const settings = makeGatewaySettings({
+          ...DEFAULT_SERVER_SETTINGS.gateway,
+          enabled: true,
+          upstreamProviders: [
+            {
+              provider: "deepseek",
+              displayName: "DeepSeek",
+              protocol: "openai-compatible",
+              baseUrl: `${upstreamOrigin}/v1`,
+              enabled: true,
+              defaultModel: "deepseek-chat",
+              customModels: ["deepseek-chat", "deepseek-reasoner"],
+              modelAliases: {},
+            },
+          ],
+        });
+        const handler = await makeHandler(
+          config,
+          undefined,
+          makeGatewayDependencies({ settings, apiKey: "upstream-key" }),
+        );
+
+        await withServer(handler, async (origin) => {
+          const response = await fetch(`${origin}/gateway/openai/v1/chat/completions`, {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer desktop-secret",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "deepseek/deepseek-reasoner",
+              messages: [{ role: "user", content: "hello" }],
+            }),
+          });
+
+          expect(response.status).toBe(200);
+          await expect(response.json()).resolves.toMatchObject({
+            id: "chatcmpl-test",
+            object: "chat.completion",
+          });
+        });
+      },
+    );
+
+    expect(observed.path).toBe("/v1/chat/completions");
+    expect(observed.authorization).toBe("Bearer upstream-key");
+    expect(observed.body).toMatchObject({
+      model: "deepseek-reasoner",
+      messages: [{ role: "user", content: "hello" }],
+    });
+  });
+
+  it("rejects gateway chat completions when the selected upstream API key is missing", async () => {
+    const config = await makeConfig({ authToken: "desktop-secret" });
+    const settings = makeGatewaySettings({
+      ...DEFAULT_SERVER_SETTINGS.gateway,
+      enabled: true,
+    });
+    const handler = await makeHandler(
+      config,
+      undefined,
+      makeGatewayDependencies({ settings, apiKey: null }),
+    );
+
+    await withServer(handler, async (origin) => {
+      const response = await fetch(`${origin}/gateway/openai/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer desktop-secret",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "deepseek/deepseek-chat",
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      });
+
+      expect(response.status).toBe(401);
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          message: "Gateway upstream provider 'deepseek' has no API key configured.",
+          type: "peakcode_gateway_error",
+        },
+      });
+    });
   });
 
   it("serves health readiness JSON", async () => {
