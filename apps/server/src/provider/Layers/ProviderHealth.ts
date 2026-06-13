@@ -66,6 +66,7 @@ import {
 import { makeProviderMaintenanceCommandCoordinator } from "../providerMaintenanceCommandCoordinator";
 import {
   enrichProviderStatusWithVersionAdvisory,
+  invalidateLatestProviderVersionCache,
   makeProviderMaintenanceCapabilities,
   normalizeCommandPath,
   parseGenericCliVersion,
@@ -1954,6 +1955,7 @@ export const ProviderHealthLive = Layer.effect(
     }) {
       const child = yield* spawner.spawn(
         ChildProcess.make(input.command, [...input.args], {
+          cwd: OS.homedir(),
           shell: process.platform === "win32",
           env: process.env,
         }),
@@ -2057,6 +2059,7 @@ export const ProviderHealthLive = Layer.effect(
           return { providers };
         }
 
+        invalidateLatestProviderVersionCache(capabilities);
         const providers = yield* refreshNow.pipe(Effect.mapError(toUpdateError));
         const refreshed = providers.find((status) => status.provider === provider);
         const stillOutdated = refreshed?.versionAdvisory?.status === "behind_latest";

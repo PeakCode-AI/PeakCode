@@ -73,6 +73,12 @@ const latestVersionCache = new Map<
 >();
 const SEMVER_NUMBER_SEGMENT = /^\d+$/;
 
+function latestVersionCacheKey(source: ProviderLatestVersionSource): string {
+  return source.kind === "homebrew"
+    ? `homebrew:${source.homebrewKind ?? "unknown"}:${source.name}`
+    : `npm:${source.name}`;
+}
+
 function nonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
@@ -410,10 +416,13 @@ function isPnpmGlobalCommandPath(commandPath: string): boolean {
 function isNpmGlobalCommandPath(commandPath: string): boolean {
   const normalized = normalizeCommandPath(commandPath);
   return (
-    normalized.includes("/node_modules/.bin/") ||
     normalized.includes("/lib/node_modules/") ||
     normalized.includes("/npm/node_modules/")
   );
+}
+
+function isNodeModulesBinCommandPath(commandPath: string): boolean {
+  return normalizeCommandPath(commandPath).includes("/node_modules/.bin/");
 }
 
 function isHomebrewCommandPath(commandPath: string): boolean {
@@ -496,12 +505,15 @@ export const resolveProviderMaintenanceCapabilitiesEffect = Effect.fn(
       if (!exists) {
         continue;
       }
+      if (isNodeModulesBinCommandPath(candidate)) {
+        continue;
+      }
       const realCommandPath = yield* fileSystem
         .realPath(candidate)
         .pipe(Effect.catch(() => Effect.succeed(candidate)));
       return resolvePackageManagedProviderMaintenance(definition, {
         ...options,
-        binaryPath,
+        binaryPath: candidate,
         realCommandPath,
       });
     }
@@ -608,10 +620,7 @@ export const resolveLatestProviderVersion = Effect.fn("resolveLatestProviderVers
     return null;
   }
 
-  const cacheKey =
-    source.kind === "homebrew"
-      ? `homebrew:${source.homebrewKind ?? "unknown"}:${source.name}`
-      : `npm:${source.name}`;
+  const cacheKey = latestVersionCacheKey(source);
   const cached = latestVersionCache.get(cacheKey);
   const now = DateTime.toEpochMillis(yield* DateTime.now);
   if (cached && cached.expiresAt > now) {
@@ -628,6 +637,16 @@ export const resolveLatestProviderVersion = Effect.fn("resolveLatestProviderVers
   });
   return version;
 });
+
+export function invalidateLatestProviderVersionCache(
+  maintenanceCapabilities: ProviderMaintenanceCapabilities,
+): void {
+  const source = maintenanceCapabilities.latestVersionSource;
+  if (!source) {
+    return;
+  }
+  latestVersionCache.delete(latestVersionCacheKey(source));
+}
 
 export const enrichProviderStatusWithVersionAdvisory = Effect.fn(
   "enrichProviderStatusWithVersionAdvisory",

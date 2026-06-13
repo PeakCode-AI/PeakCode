@@ -299,15 +299,15 @@ function ProviderUpdateNotifications() {
       return;
     }
 
-    const firstProvider = outdatedProviders[0]!;
-    const additionalCount = outdatedProviders.length - 1;
+    const firstProvider = newNotifications[0]!;
+    const additionalCount = newNotifications.length - 1;
     const providerName = PROVIDER_DISPLAY_NAMES[firstProvider.provider];
     const title =
-      outdatedProviders.length === 1
+      newNotifications.length === 1
         ? messages.notification.providerUpdate.availableTitleOne(providerName)
-        : messages.notification.providerUpdate.availableTitleMany(outdatedProviders.length);
+        : messages.notification.providerUpdate.availableTitleMany(newNotifications.length);
     const description =
-      outdatedProviders.length === 1
+      newNotifications.length === 1
         ? messages.notification.providerUpdate.availableDescriptionOne(providerName)
         : messages.notification.providerUpdate.availableDescriptionMany(
             providerName,
@@ -336,7 +336,7 @@ function ProviderUpdateNotifications() {
         secondaryActionProps: {
           children: messages.notification.providerUpdate.actionUpdateAll,
           onClick: () => {
-            void updateAll(outdatedProviders);
+            void updateAll(newNotifications);
           },
         },
       },
