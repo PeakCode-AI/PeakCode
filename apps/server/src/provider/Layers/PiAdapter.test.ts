@@ -5,7 +5,7 @@
 
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "vitest";
-import { getPiSupportedThinkingOptions } from "./PiAdapter";
+import { getPiSupportedThinkingOptions, withLocalPiModelAdditions } from "./PiAdapter";
 
 function makePiModel(input: {
   reasoning: boolean;
@@ -14,6 +14,25 @@ function makePiModel(input: {
   return {
     reasoning: input.reasoning,
     ...(input.thinkingLevelMap !== undefined ? { thinkingLevelMap: input.thinkingLevelMap } : {}),
+  };
+}
+
+function makeAvailableModel(input: {
+  provider: string;
+  id: string;
+  name?: string;
+}): Model<Api> {
+  return {
+    id: input.id,
+    name: input.name ?? input.id,
+    api: "anthropic-messages",
+    provider: input.provider,
+    baseUrl: "https://example.test/anthropic",
+    reasoning: true,
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 128_000,
+    maxTokens: 8_192,
   };
 }
 
@@ -60,5 +79,36 @@ describe("getPiSupportedThinkingOptions", () => {
     );
 
     expect(options.map((option) => option.value)).toEqual(["minimal", "low", "medium", "high"]);
+  });
+});
+
+describe("withLocalPiModelAdditions", () => {
+  it("adds MiniMax-M3 for MiniMax China when the provider is available", () => {
+    const models = [makeAvailableModel({ provider: "minimax-cn", id: "MiniMax-M2.7" })];
+
+    expect(withLocalPiModelAdditions(models, models).map((model) => model.id)).toContain(
+      "MiniMax-M3",
+    );
+  });
+
+  it("does not add MiniMax-M3 when MiniMax China is not available", () => {
+    const models = [makeAvailableModel({ provider: "anthropic", id: "claude-test" })];
+
+    expect(withLocalPiModelAdditions(models, models).map((model) => model.id)).not.toContain(
+      "MiniMax-M3",
+    );
+  });
+
+  it("does not duplicate MiniMax-M3 when the SDK already provides it", () => {
+    const models = [
+      makeAvailableModel({ provider: "minimax-cn", id: "MiniMax-M2.7" }),
+      makeAvailableModel({ provider: "minimax-cn", id: "MiniMax-M3" }),
+    ];
+
+    expect(
+      withLocalPiModelAdditions(models, models).filter(
+        (model) => model.provider === "minimax-cn" && model.id === "MiniMax-M3",
+      ),
+    ).toHaveLength(1);
   });
 });

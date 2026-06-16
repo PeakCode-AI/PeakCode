@@ -53,6 +53,25 @@ import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogg
 
 const PROVIDER = "pi" as const;
 const DEFAULT_PI_THINKING_LEVEL: ThinkingLevel = "medium";
+const LOCAL_PI_MODEL_ADDITIONS: ReadonlyArray<Model<Api>> = [
+  {
+    id: "MiniMax-M3",
+    name: "MiniMax-M3",
+    api: "anthropic-messages",
+    provider: "minimax-cn",
+    baseUrl: "https://api.minimaxi.com/anthropic",
+    reasoning: true,
+    input: ["text", "image"],
+    cost: {
+      input: 0.6,
+      output: 2.4,
+      cacheRead: 0.12,
+      cacheWrite: 0,
+    },
+    contextWindow: 512_000,
+    maxTokens: 128_000,
+  },
+];
 const PI_THINKING_OPTIONS: ReadonlyArray<{
   readonly value: ThinkingLevel;
   readonly label: string;
@@ -198,12 +217,30 @@ function findModelInRegistry(
   if (parsed.provider) {
     return (
       registry.find(parsed.provider, parsed.id) ??
+      LOCAL_PI_MODEL_ADDITIONS.find(
+        (model) => model.provider === parsed.provider && model.id === parsed.id,
+      ) ??
       createProviderModelFallback(registry, { provider: parsed.provider, id: parsed.id })
     );
   }
   return registry
     .getAll()
-    .find((model) => model.id === parsed.id || `${model.provider}/${model.id}` === parsed.id);
+    .find((model) => model.id === parsed.id || `${model.provider}/${model.id}` === parsed.id) ??
+    LOCAL_PI_MODEL_ADDITIONS.find(
+      (model) => model.id === parsed.id || `${model.provider}/${model.id}` === parsed.id,
+    );
+}
+
+export function withLocalPiModelAdditions(
+  models: ReadonlyArray<Model<Api>>,
+  availableModels: ReadonlyArray<Model<Api>>,
+): ReadonlyArray<Model<Api>> {
+  const keys = new Set(models.map((model) => `${model.provider}/${model.id}`));
+  const availableProviders = new Set(availableModels.map((model) => model.provider));
+  const additions = LOCAL_PI_MODEL_ADDITIONS.filter(
+    (model) => availableProviders.has(model.provider) && !keys.has(`${model.provider}/${model.id}`),
+  );
+  return additions.length > 0 ? [...models, ...additions] : models;
 }
 
 function extractResumeSessionFile(resumeCursor: unknown): string | undefined {
@@ -1652,7 +1689,8 @@ const makePiAdapter = (options?: PiAdapterLiveOptions) =>
           const agentDir = makeAgentDir(input.agentDir);
           const registry = getModelRegistry(agentDir);
           registry.refresh();
-          const models = registry.getAvailable().map((model) => {
+          const availableModels = registry.getAvailable();
+          const models = withLocalPiModelAdditions(availableModels, availableModels).map((model) => {
             const supportedThinkingOptions = getPiSupportedThinkingOptions(model);
             return {
               slug: `${model.provider}/${model.id}`,
