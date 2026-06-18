@@ -47,12 +47,15 @@ function makeSocketUrl(explicitUrl: string | null): string {
   if (explicitUrl) return resolveRpcUrl(explicitUrl);
   const bridgeUrl = window.desktopBridge?.getWsUrl();
   const envUrl = import.meta.env.VITE_WS_URL as string | undefined;
+  // VITE_WS_PORT is set when the server binds to a wildcard address (0.0.0.0 / ::),
+  // so the browser constructs the WS URL from its own hostname + the correct server port.
+  const envWsPort = import.meta.env.VITE_WS_PORT as string | undefined;
   const rawUrl =
     bridgeUrl && bridgeUrl.length > 0
       ? bridgeUrl
       : envUrl && envUrl.length > 0
         ? envUrl
-        : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.hostname}:${window.location.port}`;
+        : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.hostname}:${envWsPort && envWsPort.length > 0 ? envWsPort : window.location.port}`;
   return resolveRpcUrl(rawUrl);
 }
 

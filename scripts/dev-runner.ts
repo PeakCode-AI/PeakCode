@@ -162,15 +162,27 @@ export function createDevRunnerEnv({
     const webPort = BASE_WEB_PORT + webOffset;
     const resolvedBaseDir = yield* resolveBaseDir(t3Home);
 
+    const isWildcardHost = host === "0.0.0.0" || host === "::" || host === "[::]";
+    const wsHost = isWildcardHost || host === undefined ? "[::1]" : host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+
     const output: NodeJS.ProcessEnv = {
       ...baseEnv,
       PEAKCODE_PORT: String(serverPort),
       PORT: String(webPort),
       ELECTRON_RENDERER_PORT: String(webPort),
-      VITE_WS_URL: `ws://[::1]:${serverPort}`,
       VITE_DEV_SERVER_URL: devUrl?.toString() ?? `http://localhost:${webPort}`,
       PEAKCODE_HOME: resolvedBaseDir,
     };
+
+    if (isWildcardHost) {
+      // Wildcard bind: leave VITE_WS_URL unset so the browser uses window.location.hostname,
+      // and inject the WS server port separately for the fallback URL construction.
+      output.VITE_WS_PORT = String(serverPort);
+      delete output.VITE_WS_URL;
+    } else {
+      output.VITE_WS_URL = `ws://${wsHost}:${serverPort}`;
+      delete output.VITE_WS_PORT;
+    }
 
     if (host !== undefined) {
       output.PEAKCODE_HOST = host;
