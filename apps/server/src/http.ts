@@ -134,7 +134,7 @@ function headerString(
   const lowerName = name.toLowerCase();
   const entry = Object.entries(headers).find(([key]) => key.toLowerCase() === lowerName)?.[1];
   if (Array.isArray(entry)) return entry[0] ?? "";
-  return entry ?? "";
+  return (entry as string | undefined) ?? "";
 }
 
 function isLoopbackAddress(address: string | null | undefined): boolean {
@@ -231,12 +231,14 @@ const gatewayEffectRouteLayer = HttpRouter.add(
     // cookies) happens inside the adapter.
     const secretEntries = yield* Effect.all(
       upstream.secrets.map((def) =>
-        secretStore.get(gatewaySecretName(upstream.id, def.id)).pipe(
-          Effect.map((bytes): [string, string] => [
-            def.id,
-            bytes ? new TextDecoder().decode(bytes).trim() : "",
-          ]),
-        ),
+        secretStore
+          .get(gatewaySecretName(upstream.id, def.id))
+          .pipe(
+            Effect.map((bytes): [string, string] => [
+              def.id,
+              bytes ? new TextDecoder().decode(bytes).trim() : "",
+            ]),
+          ),
       ),
     );
     const secrets: Record<string, string> = {};
@@ -255,7 +257,8 @@ const gatewayEffectRouteLayer = HttpRouter.add(
 
     try {
       if (isResponses) {
-        const { chatPayload, contextInputItems } = responsesPayloadToChatPayloadWithContext(payload);
+        const { chatPayload, contextInputItems } =
+          responsesPayloadToChatPayloadWithContext(payload);
         chatPayload.model = model;
         const upstreamResponse = yield* Effect.tryPromise({
           try: () =>
@@ -273,7 +276,11 @@ const gatewayEffectRouteLayer = HttpRouter.add(
           ? chatStreamToResponsesStream(upstreamResponse, requestedModel, contextInputItems)
           : yield* Effect.tryPromise({
               try: () =>
-                chatResponseToResponsesResponse(upstreamResponse, requestedModel, contextInputItems),
+                chatResponseToResponsesResponse(
+                  upstreamResponse,
+                  requestedModel,
+                  contextInputItems,
+                ),
               catch: () => ({
                 message: "Failed to convert gateway response.",
                 status: 502 as const,
@@ -364,9 +371,7 @@ const anthropicGatewayEffectRouteLayer = HttpRouter.add(
       );
       const messages = isRecord(body) && Array.isArray(body.messages) ? body.messages : [];
       const system = isRecord(body) && typeof body.system === "string" ? body.system : "";
-      const inputTokens = Math.ceil(
-        (system.length + JSON.stringify(messages).length) / 4,
-      );
+      const inputTokens = Math.ceil((system.length + JSON.stringify(messages).length) / 4);
       return HttpServerResponse.jsonUnsafe({ input_tokens: Math.max(inputTokens, 1) });
     }
 
@@ -401,12 +406,14 @@ const anthropicGatewayEffectRouteLayer = HttpRouter.add(
 
     const secretEntries = yield* Effect.all(
       upstream.secrets.map((def) =>
-        secretStore.get(gatewaySecretName(upstream.id, def.id)).pipe(
-          Effect.map((bytes): [string, string] => [
-            def.id,
-            bytes ? new TextDecoder().decode(bytes).trim() : "",
-          ]),
-        ),
+        secretStore
+          .get(gatewaySecretName(upstream.id, def.id))
+          .pipe(
+            Effect.map((bytes): [string, string] => [
+              def.id,
+              bytes ? new TextDecoder().decode(bytes).trim() : "",
+            ]),
+          ),
       ),
     );
     const secrets: Record<string, string> = {};

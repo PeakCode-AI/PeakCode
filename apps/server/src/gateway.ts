@@ -111,21 +111,26 @@ function responsesContentToChatContent(content: unknown): unknown {
   if (!Array.isArray(content)) return content ?? "";
 
   const parts: Array<
-    | { type: "text"; text: string }
-    | { type: "image_url"; image_url: { url: string } }
-  > = content.flatMap((part) => {
-    if (!isRecord(part)) return [];
-    if (
-      (part.type === "input_text" || part.type === "output_text" || part.type === "text") &&
-      typeof part.text === "string"
-    ) {
-      return [{ type: "text", text: part.text }];
-    }
-    if (part.type === "input_image" && typeof part.image_url === "string") {
-      return [{ type: "image_url", image_url: { url: part.image_url } }];
-    }
-    return [];
-  });
+    { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }
+  > = content.flatMap(
+    (
+      part,
+    ): Array<
+      { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }
+    > => {
+      if (!isRecord(part)) return [];
+      if (
+        (part.type === "input_text" || part.type === "output_text" || part.type === "text") &&
+        typeof part.text === "string"
+      ) {
+        return [{ type: "text", text: part.text }];
+      }
+      if (part.type === "input_image" && typeof part.image_url === "string") {
+        return [{ type: "image_url", image_url: { url: part.image_url } }];
+      }
+      return [];
+    },
+  );
 
   if (parts.length === 0) return "";
   if (parts.every((part) => part.type === "text")) {
@@ -254,9 +259,10 @@ export function responsesPayloadToChatPayload(
   return responsesPayloadToChatPayloadWithContext(payload).chatPayload;
 }
 
-export function responsesPayloadToChatPayloadWithContext(
-  payload: Record<string, unknown>,
-): { chatPayload: Record<string, unknown>; contextInputItems: unknown[] } {
+export function responsesPayloadToChatPayloadWithContext(payload: Record<string, unknown>): {
+  chatPayload: Record<string, unknown>;
+  contextInputItems: unknown[];
+} {
   const contextInputItems = responseContextInputItems(payload);
   const result: Record<string, unknown> = {
     model: payload.model,

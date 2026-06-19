@@ -228,9 +228,9 @@ function channelIsComplete(
 ): boolean {
   return Boolean(
     channel &&
-      channel.baseUrl.trim().length > 0 &&
-      channelHasModel(channel) &&
-      channelHasRequiredSecrets(channel, statuses),
+    channel.baseUrl.trim().length > 0 &&
+    channelHasModel(channel) &&
+    channelHasRequiredSecrets(channel, statuses),
   );
 }
 
@@ -739,9 +739,10 @@ function SettingsRouteView() {
     });
   }, [agentConfigStatusQuery.data?.agents, agentConfigStatusQuery.isError]);
   const enabledChannelCount =
-    gatewayConfigQuery.data?.channels.filter((channel) =>
-      channel.enabled &&
-      channelIsComplete(channel, channelSecretStatuses(channel.id, gatewaySecretStatuses)),
+    gatewayConfigQuery.data?.channels.filter(
+      (channel) =>
+        channel.enabled &&
+        channelIsComplete(channel, channelSecretStatuses(channel.id, gatewaySecretStatuses)),
     ).length ?? 0;
   const updateGatewayConfigMutation = useMutation({
     mutationFn: async (patch: GatewayConfigPatch) => {
@@ -2626,11 +2627,32 @@ function SettingsRouteView() {
                 </p>
                 <div className="space-y-1">
                   {[
-                    { label: "Root", url: resolveWsHttpUrl("/gateway/openai/v1").replace(/\?token=.*/u, "") },
-                    { label: "Chat", url: resolveWsHttpUrl("/gateway/openai/v1/chat/completions").replace(/\?token=.*/u, "") },
-                    { label: "Models", url: resolveWsHttpUrl("/gateway/openai/v1/models").replace(/\?token=.*/u, "") },
-                    { label: "Responses", url: resolveWsHttpUrl("/gateway/openai/v1/responses").replace(/\?token=.*/u, "") },
-                    { label: "Anthropic", url: resolveWsHttpUrl("/gateway/anthropic").replace(/\?token=.*/u, "") },
+                    {
+                      label: "Root",
+                      url: resolveWsHttpUrl("/gateway/openai/v1").replace(/\?token=.*/u, ""),
+                    },
+                    {
+                      label: "Chat",
+                      url: resolveWsHttpUrl("/gateway/openai/v1/chat/completions").replace(
+                        /\?token=.*/u,
+                        "",
+                      ),
+                    },
+                    {
+                      label: "Models",
+                      url: resolveWsHttpUrl("/gateway/openai/v1/models").replace(/\?token=.*/u, ""),
+                    },
+                    {
+                      label: "Responses",
+                      url: resolveWsHttpUrl("/gateway/openai/v1/responses").replace(
+                        /\?token=.*/u,
+                        "",
+                      ),
+                    },
+                    {
+                      label: "Anthropic",
+                      url: resolveWsHttpUrl("/gateway/anthropic").replace(/\?token=.*/u, ""),
+                    },
                   ].map((ep) => (
                     <div
                       key={ep.label}
@@ -2672,8 +2694,9 @@ function SettingsRouteView() {
               <div>
                 <h4 className="mb-1 text-sm font-semibold text-foreground">Agent Setup</h4>
                 <p className="mb-3 text-xs text-muted-foreground">
-                  将网关配置写入各 Agent 的本地配置文件。Codex / Claude Code 经网关协议转换；OpenCode /
-                  Kilo / Cursor / pi / Cline 经 OpenAI 标准协议转发。点击写入后，手动启动对应 Agent 即可用网关。
+                  将网关配置写入各 Agent 的本地配置文件。Codex / Claude Code
+                  经网关协议转换；OpenCode / Kilo / Cursor / pi / Cline 经 OpenAI
+                  标准协议转发。点击写入后，手动启动对应 Agent 即可用网关。
                 </p>
                 {agentConfigStatusQuery.isError ? (
                   <p className="mb-3 rounded-md border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-300">
@@ -2795,7 +2818,8 @@ function SettingsRouteView() {
                         if (checked && !channelIsComplete(serverChannel, channelSecrets)) {
                           toastManager.add({
                             title: "渠道配置未完成",
-                            description: "请先配置 Base URL、至少一个模型，以及该渠道要求的全部密钥。",
+                            description:
+                              "请先配置 Base URL、至少一个模型，以及该渠道要求的全部密钥。",
                             type: "info",
                           });
                           return;
@@ -3686,7 +3710,8 @@ function GatewayChannelCard(props: {
   const totalSecrets = props.serverChannel?.secrets.length ?? 0;
   const configuredSecrets = props.secretsStatus.filter((s) => s.hasApiKey).length;
   const hasAllSecrets =
-    Boolean(props.serverChannel) && channelHasRequiredSecrets(props.serverChannel, props.secretsStatus);
+    Boolean(props.serverChannel) &&
+    channelHasRequiredSecrets(props.serverChannel, props.secretsStatus);
   const hasModel = channelHasModel(props.serverChannel);
   const hasBaseUrl = Boolean(props.serverChannel?.baseUrl.trim());
   const canEnable = Boolean(props.serverChannel) && hasAllSecrets && hasModel && hasBaseUrl;
@@ -3871,9 +3896,7 @@ function ChannelModelsEditor(props: {
         </span>
       </div>
       {props.models.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground/60">
-          未配置模型，将使用渠道默认模型字段。
-        </p>
+        <p className="text-[11px] text-muted-foreground/60">未配置模型，将使用渠道默认模型字段。</p>
       ) : (
         <div className="space-y-1">
           {props.models.map((model, index) => (
@@ -3920,7 +3943,12 @@ function ChannelModelsEditor(props: {
           placeholder="模型 id，如 deepseek-reasoner"
           className="h-7 flex-1 text-xs"
         />
-        <Button size="xs" variant="outline" onClick={addModel} disabled={props.disabled || !newId.trim()}>
+        <Button
+          size="xs"
+          variant="outline"
+          onClick={addModel}
+          disabled={props.disabled || !newId.trim()}
+        >
           添加
         </Button>
       </div>
@@ -3938,7 +3966,10 @@ function ChannelAgentMappingsEditor(props: {
   const options = props.models;
   // Builds a mappings object that omits empty values, so we never assign
   // `undefined` to an optional field (forbidden by exactOptionalPropertyTypes).
-  const buildMappings = (agent: "codex" | "claude", value: string): {
+  const buildMappings = (
+    agent: "codex" | "claude",
+    value: string,
+  ): {
     codex?: string;
     claude?: string;
   } => {
@@ -3949,11 +3980,7 @@ function ChannelAgentMappingsEditor(props: {
     if (trimmed) next[agent] = trimmed;
     return next;
   };
-  const renderSelect = (
-    agent: "codex" | "claude",
-    label: string,
-    description: string,
-  ) => {
+  const renderSelect = (agent: "codex" | "claude", label: string, description: string) => {
     const current = props.mappings[agent];
     return (
       <div className="space-y-1">
@@ -4027,7 +4054,7 @@ function ChannelSecretsRow(props: {
             label={def.label}
             sensitive={def.sensitive}
             hasApiKey={hasApiKey}
-            disabled={props.disabled}
+            disabled={props.disabled ?? false}
             onSet={(value) => props.onSetSecret(def.id, value)}
             onRemove={() => props.onRemoveSecret(def.id)}
           />

@@ -129,9 +129,7 @@ export function anthropicToOpenAIChat(payload: Record<string, unknown>): Record<
             function: {
               name: block.name,
               arguments:
-                typeof block.input === "string"
-                  ? block.input
-                  : JSON.stringify(block.input ?? {}),
+                typeof block.input === "string" ? block.input : JSON.stringify(block.input ?? {}),
             },
           });
         } else if (block.type === "text" && typeof block.text === "string") {
@@ -187,7 +185,10 @@ export function anthropicToOpenAIChat(payload: Record<string, unknown>): Record<
   // are lowercased because some OpenAI-compatible upstreams reject uppercase.
   if (Array.isArray(payload.tools)) {
     const SERVER_TOOL_PREFIXES = [
-      "web_search", "computer", "text_editor", "bash_",
+      "web_search",
+      "computer",
+      "text_editor",
+      "bash_",
       "code_execution",
     ];
     const tools = payload.tools
@@ -267,7 +268,8 @@ export async function openAIChatToAnthropicMessages(
 ): Promise<Response> {
   const raw = (await openaiResponse.json()) as OpenAIChatResponse | Record<string, unknown>;
   if (!openaiResponse.ok) {
-    const upstreamError = isRecord(raw.error) ? raw.error : {};
+    const rawRecord = raw as Record<string, unknown>;
+    const upstreamError = isRecord(rawRecord.error) ? rawRecord.error : {};
     const message =
       typeof upstreamError.message === "string"
         ? upstreamError.message
@@ -384,10 +386,7 @@ export function openAIChatStreamToAnthropicStream(
       let textBlockOpen = false;
       let textBlockStarted = false;
       let finalStopReason = "end_turn";
-      const toolCallsByIndex = new Map<
-        number,
-        { id: string; name: string; arguments: string }
-      >();
+      const toolCallsByIndex = new Map<number, { id: string; name: string; arguments: string }>();
       // Track which tool indexes we've already emitted a content_block_start for
       // so we can append them after the text block closes.
       const emittedToolStarts = new Set<number>();
@@ -460,18 +459,15 @@ export function openAIChatStreamToAnthropicStream(
                   // we saw in this stream so arguments accumulate together.
                   const fallbackIndex =
                     toolCallsByIndex.size > 0 ? Math.max(...toolCallsByIndex.keys()) : 0;
-                  const idx =
-                    typeof rawTc.index === "number" ? rawTc.index : fallbackIndex;
+                  const idx = typeof rawTc.index === "number" ? rawTc.index : fallbackIndex;
                   const fn = isRecord(rawTc.function) ? rawTc.function : {};
                   const existing = toolCallsByIndex.get(idx);
                   const id =
                     typeof rawTc.id === "string" && rawTc.id
                       ? rawTc.id
-                      : existing?.id ?? `toolu_${randomUUID().replace(/-/gu, "").slice(0, 24)}`;
+                      : (existing?.id ?? `toolu_${randomUUID().replace(/-/gu, "").slice(0, 24)}`);
                   const name =
-                    typeof fn.name === "string" && fn.name
-                      ? fn.name
-                      : existing?.name ?? "";
+                    typeof fn.name === "string" && fn.name ? fn.name : (existing?.name ?? "");
                   const args =
                     (existing?.arguments ?? "") +
                     (typeof fn.arguments === "string" ? fn.arguments : "");
