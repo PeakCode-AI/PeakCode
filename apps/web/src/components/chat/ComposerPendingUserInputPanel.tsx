@@ -80,7 +80,11 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
 
   const handleOptionSelection = useEffectEvent((questionId: string, optionLabel: string) => {
     const nextDraftAnswer = onToggleOption(questionId, optionLabel);
-    if (activeQuestion?.multiSelect) {
+    // Look up the question by id rather than using `activeQuestion` from the closure.
+    // `activeQuestion` can be stale when the React Compiler memoises the callback before
+    // useEffectEvent's ref.impl is refreshed after a question transition.
+    const clickedQuestion = prompt.questions.find((q) => q.id === questionId);
+    if (clickedQuestion?.multiSelect) {
       return;
     }
     if (autoAdvanceTimerRef.current !== null) {
