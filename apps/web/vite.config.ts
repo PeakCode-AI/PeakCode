@@ -6,6 +6,8 @@ import { defineConfig } from "vite";
 import pkg from "./package.json" with { type: "json" };
 
 const port = Number(process.env.PORT ?? 5733);
+const viteHost = process.env.PEAKCODE_HOST || "localhost";
+const isWildcardHost = viteHost === "0.0.0.0" || viteHost === "::" || viteHost === "[::]";
 const sourcemapEnv = process.env.PEAKCODE_WEB_SOURCEMAP?.trim().toLowerCase();
 
 const buildSourcemap =
@@ -38,23 +40,27 @@ export default defineConfig({
     ],
   },
   define: {
-    // In dev mode, tell the web app where the WebSocket server lives
+    // In dev mode, tell the web app where the WebSocket server lives.
+    // When binding to a wildcard address (0.0.0.0 / ::), VITE_WS_URL is left
+    // unset and VITE_WS_PORT is injected instead so the browser can construct
+    // the WS URL from window.location.hostname + the correct port.
     "import.meta.env.VITE_WS_URL": JSON.stringify(process.env.VITE_WS_URL ?? ""),
+    "import.meta.env.VITE_WS_PORT": JSON.stringify(process.env.VITE_WS_PORT ?? ""),
     "import.meta.env.APP_VERSION": JSON.stringify(pkg.version),
   },
   resolve: {
     tsconfigPaths: true,
   },
   server: {
+    host: viteHost,
     port,
     strictPort: true,
-    hmr: {
-      // Explicit config so Vite's HMR WebSocket connects reliably
-      // inside Electron's BrowserWindow. Vite 8 uses console.debug for
-      // connection logs — enable "Verbose" in DevTools to see them.
-      protocol: "ws",
-      host: "localhost",
-    },
+    // When binding to a wildcard address (0.0.0.0 / ::), omit hmr.host so Vite
+    // lets each client connect back to its own window.location.hostname — this
+    // makes HMR work for remote devices on the LAN.  For localhost / Electron we
+    // keep hmr.host: "localhost" for reliable BrowserWindow connectivity.
+    // (Vite 8 logs HMR connections at console.debug — enable "Verbose" in DevTools.)
+    hmr: isWildcardHost ? { protocol: "ws" } : { protocol: "ws", host: "localhost" },
   },
   build: {
     outDir: "dist",
