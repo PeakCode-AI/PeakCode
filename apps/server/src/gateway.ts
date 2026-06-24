@@ -425,7 +425,12 @@ export function chatStreamToResponsesStream(
               .map((line) => line.slice(5).trim())
               .join("\n");
             if (!data || data === "[DONE]") continue;
-            const chunk = JSON.parse(data) as unknown;
+            let chunk: unknown;
+            try {
+              chunk = JSON.parse(data);
+            } catch {
+              continue;
+            }
             if (!isRecord(chunk) || !Array.isArray(chunk.choices)) continue;
             for (const choice of chunk.choices) {
               if (!isRecord(choice) || !isRecord(choice.delta)) continue;

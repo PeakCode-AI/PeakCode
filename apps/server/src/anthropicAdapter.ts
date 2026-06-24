@@ -381,7 +381,6 @@ export function openAIChatStreamToAnthropicStream(
 
       const reader = upstream.getReader();
       let buffer = "";
-      let nextBlockIndex = 0;
       let textBlockOpen = false;
       let textBlockStarted = false;
       let finalStopReason = "end_turn";
@@ -480,12 +479,16 @@ export function openAIChatStreamToAnthropicStream(
           }
         }
 
-        // Flush: close text block, then emit tool_use blocks.
+        // Flush: close text block, then emit tool_use blocks. Tool blocks
+        // follow the text block sequentially so their indices are contiguous
+        // (text=0, tool1=1, tool2=2, …) — Claude Code uses `index` to match
+        // content_block_start/delta/stop events, so collisions break tool calls.
         closeTextBlock();
+        let toolBlockIndex = textBlockStarted ? 1 : 0;
         for (const [idx, tc] of [...toolCallsByIndex.entries()].sort((a, b) => a[0] - b[0])) {
           if (emittedToolStarts.has(idx)) continue;
           emittedToolStarts.add(idx);
-          const blockIndex = textBlockStarted ? nextBlockIndex + 1 : nextBlockIndex;
+          const blockIndex = toolBlockIndex++;
           // Anthropic streaming tool_use protocol:
           // 1. content_block_start with EMPTY input ({}) — Claude Code expects
           //    input to arrive via input_json_delta, not in the start event.
@@ -505,7 +508,6 @@ export function openAIChatStreamToAnthropicStream(
             type: "content_block_stop",
             index: blockIndex,
           });
-          nextBlockIndex = blockIndex;
         }
 
         enqueue("message_delta", {
