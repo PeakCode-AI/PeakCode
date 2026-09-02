@@ -11,6 +11,7 @@ import { makeCursorAdapterLive } from "./Layers/CursorAdapter";
 import { makeEventNdjsonLogger } from "./Layers/EventNdjsonLogger";
 import { makeGeminiAdapterLive } from "./Layers/GeminiAdapter";
 import { makeGrokAdapterLive } from "./Layers/GrokAdapter";
+import { makeKimiCodeAdapterLive } from "./Layers/KimiCodeAdapter";
 import { makeKiloAdapterLive, makeOpenCodeAdapterLive } from "./Layers/OpenCodeAdapter";
 import { makePiAdapterLive } from "./Layers/PiAdapter";
 import { ProviderAdapterRegistryLive } from "./Layers/ProviderAdapterRegistry";
@@ -66,6 +67,10 @@ export function makeServerProviderLayer(): Layer.Layer<
       {},
       nativeEventLogger ? { nativeEventLogger } : undefined,
     );
+    const kimiCodeAdapterLayer = makeKimiCodeAdapterLive(
+      {},
+      nativeEventLogger ? { nativeEventLogger } : undefined,
+    );
     const cursorAdapterLayer = makeCursorAdapterLive(
       {},
       nativeEventLogger ? { nativeEventLogger } : undefined,
@@ -78,6 +83,7 @@ export function makeServerProviderLayer(): Layer.Layer<
       Layer.provide(geminiAdapterLayer),
       Layer.provide(grokAdapterLayer),
       Layer.provide(kiloAdapterLayer),
+      Layer.provide(kimiCodeAdapterLayer),
       Layer.provide(openCodeAdapterLayer),
       Layer.provide(piAdapterLayer),
       Layer.provideMerge(providerSessionDirectoryLayer),

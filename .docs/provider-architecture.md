@@ -13,7 +13,45 @@ Methods mirror the `NativeApi` interface defined in `@peakcode/contracts`:
 - `providers.respondToRequest`, `providers.stopSession`
 - `shell.openInEditor`, `server.getConfig`
 
-Codex is the only implemented provider. `claudeCode` is reserved in contracts/UI.
+## Implemented providers
+
+`ProviderKind` (`packages/contracts/src/orchestration.ts`) currently covers:
+
+| Provider kind | Runtime                          | Transport           |
+| ------------- | -------------------------------- | ------------------- |
+| `codex`       | `codex app-server`               | JSON-RPC over stdio |
+| `claudeAgent` | `@anthropic-ai/claude-agent-sdk` | in-process SDK      |
+| `cursor`      | `cursor-agent`                   | ACP over stdio      |
+| `gemini`      | Gemini CLI                       | ACP over stdio      |
+| `grok`        | `grok agent ... stdio`           | ACP over stdio      |
+| `kilo`        | Kilo Code                        | HTTP server         |
+| `kimiCode`    | `kimi acp`                       | ACP over stdio      |
+| `opencode`    | OpenCode                         | HTTP server         |
+| `pi`          | Pi                               | stdio               |
+
+Every adapter implements `ProviderAdapterShape` (`provider/Services/ProviderAdapter.ts`) and is
+registered in `ProviderAdapterRegistry` plus `provider/runtimeLayer.ts`.
+
+### ACP providers
+
+ACP-backed providers share `provider/acp/AcpSessionRuntime.ts` (protocol v1) and the event mappers in
+`AcpCoreRuntimeEvents.ts` / `AcpRuntimeModel.ts`. Each contributes a small `*AcpSupport.ts` module
+that owns only its spawn line and auth resolution.
+
+Two Kimi-specific notes worth knowing before adding another ACP provider:
+
+- **Config options vs. process flags.** `kimi acp` accepts no model flags; model and thinking level
+  are session config options written with `session/set_config_option`. That is why Kimi advertises
+  `sessionModelSwitch: "in-session"` while Grok, whose model is a spawn-time flag, uses
+  `restart-session`. It is also why Kimi's model catalogue is read live from `session/new` rather
+  than hardcoded.
+- **Defects vs. typed errors.** Kimi reports agent-side refusals (quota exhausted, expired
+  credentials) as a JSON-RPC error whose payload fails schema decode, so it reaches the adapter as a
+  _defect_, not a typed `AcpError`. The prompt fiber ends in `Effect.ignoreCause`, so such a defect
+  is silently swallowed and the turn never reaches a terminal event — the thread spins forever.
+  `KimiCodeAdapter` promotes prompt defects to the failure channel
+  (`kimiCodePromptDefectToAdapterError`) so every turn terminates. Check this when wiring a new ACP
+  agent.
 
 ## Client transport
 

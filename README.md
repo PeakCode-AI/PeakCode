@@ -97,9 +97,13 @@ Seamlessly switch between AI coding providers without changing your workflow:
 | -------------- | --------- |
 | Claude Code    | Supported |
 | Codex (OpenAI) | Supported |
+| Cursor         | Supported |
 | Gemini         | Supported |
+| Grok           | Supported |
 | Kilo Code      | Supported |
+| Kimi Code      | Supported |
 | OpenCode       | Supported |
+| Pi             | Supported |
 
 ### Real-Time Streaming
 

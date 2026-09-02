@@ -10,6 +10,7 @@ type ModelProviderKind =
   | "gemini"
   | "grok"
   | "kilo"
+  | "kimiCode"
   | "opencode"
   | "pi";
 
@@ -38,6 +39,11 @@ function inferProviderFromLabel(label: string): ModelProviderKind | undefined {
   if (lowerLabel.includes("kilo")) {
     return "kilo";
   }
+  // Checked after "kilo" so the two k-names cannot shadow each other, and
+  // matches "moonshot" since Kimi sessions may be labelled by the vendor.
+  if (lowerLabel.includes("kimi") || lowerLabel.includes("moonshot")) {
+    return "kimiCode";
+  }
   if (lowerLabel.includes("cursor")) {
     return "cursor";
   }
@@ -64,6 +70,7 @@ function inferLegacyModelProvider(provider: unknown, model: string): ModelProvid
     provider === "gemini" ||
     provider === "grok" ||
     provider === "kilo" ||
+    provider === "kimiCode" ||
     provider === "opencode" ||
     provider === "pi"
   ) {
@@ -84,6 +91,9 @@ function inferLegacyModelProvider(provider: unknown, model: string): ModelProvid
   }
   if (lowerModel.includes("grok")) {
     return "grok";
+  }
+  if (lowerModel.includes("kimi")) {
+    return "kimiCode";
   }
   return "codex";
 }

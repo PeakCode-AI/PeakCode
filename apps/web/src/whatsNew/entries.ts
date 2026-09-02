@@ -22,6 +22,18 @@ import type { WhatsNewEntry } from "./logic";
 
 export const WHATS_NEW_ENTRIES: readonly WhatsNewEntry[] = [
   {
+    version: "0.0.51",
+    date: "Sep 2",
+    features: [
+      {
+        id: "kimi-code-provider",
+        title: "Kimi Code joins the provider lineup",
+        description:
+          "Run Kimi Code CLI sessions natively from Peak Code with your own Kimi login and subscription \u2014 ACP-backed startup, live model discovery, in-session model and thinking switching, resume, approvals, health checks, and handoff to and from every other provider.",
+      },
+    ],
+  },
+  {
     version: "0.0.50",
     date: "May 28",
     features: [

@@ -21,6 +21,7 @@ import { CursorAdapter } from "../Services/CursorAdapter.ts";
 import { GeminiAdapter } from "../Services/GeminiAdapter.ts";
 import { GrokAdapter } from "../Services/GrokAdapter.ts";
 import { KiloAdapter } from "../Services/KiloAdapter.ts";
+import { KimiCodeAdapter } from "../Services/KimiCodeAdapter.ts";
 import { OpenCodeAdapter } from "../Services/OpenCodeAdapter.ts";
 import { PiAdapter } from "../Services/PiAdapter.ts";
 
@@ -40,6 +41,7 @@ const makeProviderAdapterRegistry = (options?: ProviderAdapterRegistryLiveOption
             yield* GeminiAdapter,
             yield* GrokAdapter,
             yield* KiloAdapter,
+            yield* KimiCodeAdapter,
             yield* OpenCodeAdapter,
             yield* PiAdapter,
           ];
