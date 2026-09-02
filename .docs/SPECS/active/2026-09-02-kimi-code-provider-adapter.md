@@ -1,6 +1,6 @@
 # Kimi Code CLI provider adapter
 
-Status: Implemented (AC 4/6/7/9/10/11 unverified — account quota)   Owner: @notdefined-inc Date: 2026-09-02
+Status: Implemented (AC 4/6/7/9/10/11 unverified — account quota) Owner: @notdefined-inc Date: 2026-09-02
 
 ## Problem
 

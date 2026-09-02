@@ -285,6 +285,7 @@ const PROVIDER_VISIBILITY_OPTIONS: ReadonlyArray<{ provider: ProviderKind; title
   { provider: "gemini", title: PROVIDER_DISPLAY_NAMES.gemini },
   { provider: "grok", title: PROVIDER_DISPLAY_NAMES.grok },
   { provider: "kilo", title: PROVIDER_DISPLAY_NAMES.kilo },
+  { provider: "kimiCode", title: PROVIDER_DISPLAY_NAMES.kimiCode },
   { provider: "opencode", title: PROVIDER_DISPLAY_NAMES.opencode },
   { provider: "pi", title: PROVIDER_DISPLAY_NAMES.pi },
 ];

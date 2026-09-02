@@ -2489,6 +2489,7 @@ describe("PROVIDER_OPTIONS", () => {
       { value: "gemini", label: "Gemini", available: true },
       { value: "grok", label: "Grok", available: true },
       { value: "kilo", label: "Kilo", available: true },
+      { value: "kimiCode", label: "Kimi Code", available: true },
       { value: "opencode", label: "OpenCode", available: true },
       { value: "pi", label: "Pi", available: true },
     ]);
