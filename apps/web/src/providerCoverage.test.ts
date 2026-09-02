@@ -6,6 +6,7 @@ import { PROVIDER_DISPLAY_NAMES, type ProviderKind } from "@peakcode/contracts";
 import { describe, expect, it } from "vitest";
 
 import { PROVIDER_OPTIONS } from "./session-logic";
+import { INSTALL_PROVIDER_DOCS } from "./providerInstallDocs";
 import { DEFAULT_PROVIDER_ORDER } from "./providerOrdering";
 
 /**
@@ -31,6 +32,12 @@ describe("provider list coverage", () => {
 
   it("orders every provider by default", () => {
     expect(new Set(DEFAULT_PROVIDER_ORDER)).toEqual(new Set(ALL_PROVIDER_KINDS));
+  });
+
+  it("documents install/update for every provider in Installed CLIs", () => {
+    expect(new Set(INSTALL_PROVIDER_DOCS.map((entry) => entry.provider))).toEqual(
+      new Set(ALL_PROVIDER_KINDS),
+    );
   });
 
   it("gives every provider a non-empty display name", () => {

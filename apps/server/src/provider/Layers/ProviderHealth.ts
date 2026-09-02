@@ -1839,6 +1839,19 @@ export const ProviderHealthLive = Layer.effect(
             updateLockKey: "cursor-agent",
           });
         }
+        if (provider === KIMI_CODE_PROVIDER) {
+          // Kimi Code installs a self-contained native binary under
+          // ~/.kimi-code/bin and updates itself with `kimi upgrade`; it is not
+          // published to npm or Homebrew, so it cannot use the package-managed
+          // table (whose npmPackageName is required).
+          return makeProviderMaintenanceCapabilities({
+            provider,
+            packageName: null,
+            updateExecutable: nonEmptyTrimmed(getProviderBinaryPath(provider, settings)) ?? "kimi",
+            updateArgs: ["upgrade"],
+            updateLockKey: "kimi-code-native",
+          });
+        }
         const definition = PACKAGE_MANAGED_PROVIDER_UPDATES[provider];
         if (!definition) {
           return makeProviderMaintenanceCapabilities({
