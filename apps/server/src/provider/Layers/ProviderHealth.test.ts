@@ -17,6 +17,7 @@ import {
   makeCheckCursorProviderStatus,
   makeCheckGrokProviderStatus,
   makeCheckKiloProviderStatus,
+  makeCheckKimiCodeProviderStatus,
   makeCheckOpenCodeProviderStatus,
   parseAuthStatusFromOutput,
   parseClaudeAuthStatusFromOutput,
@@ -889,6 +890,75 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         assert.strictEqual(status.authStatus, "unknown");
         assert.strictEqual(status.message, "Grok CLI (`grok`) is not installed or not on PATH.");
       }).pipe(Effect.provide(failingSpawnerLayer("spawn grok ENOENT"))),
+    );
+  });
+
+  describe("checkKimiCodeProviderStatus", () => {
+    const versionSpawner = (expectedCommand?: string) =>
+      mockSpawnerLayer((args, command) => {
+        if (expectedCommand !== undefined) {
+          assert.strictEqual(command, expectedCommand);
+        }
+        const joined = args.join(" ");
+        if (joined === "--version") return { stdout: "0.39.1\n", stderr: "", code: 0 };
+        throw new Error(`Unexpected args: ${joined}`);
+      });
+
+    it.effect("reports unauthenticated when no credentials file exists", () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const emptyHome = yield* fileSystem.makeTempDirectoryScoped({ prefix: "kimi-home-" });
+        const status = yield* makeCheckKimiCodeProviderStatus(undefined, emptyHome);
+        assert.strictEqual(status.provider, "kimiCode");
+        assert.strictEqual(status.status, "ready");
+        assert.strictEqual(status.available, true);
+        assert.strictEqual(status.authStatus, "unauthenticated");
+        assert.strictEqual(status.version, "0.39.1");
+        assert.strictEqual(
+          status.message,
+          "Kimi Code CLI is installed. Run `kimi login` to authenticate before starting a session.",
+        );
+      }).pipe(Effect.provide(versionSpawner()), Effect.scoped),
+    );
+
+    it.effect("reports authenticated when the credentials file exists", () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const home = yield* fileSystem.makeTempDirectoryScoped({ prefix: "kimi-home-" });
+        const credentialsDir = path.join(home, ".kimi-code", "credentials");
+        yield* fileSystem.makeDirectory(credentialsDir, { recursive: true });
+        yield* fileSystem.writeFileString(path.join(credentialsDir, "kimi-code.json"), "{}");
+
+        const status = yield* makeCheckKimiCodeProviderStatus(undefined, home);
+        assert.strictEqual(status.authStatus, "authenticated");
+        assert.strictEqual(status.authType, "oauth");
+        assert.strictEqual(status.authLabel, "Kimi account");
+        assert.strictEqual(status.message, undefined);
+      }).pipe(Effect.provide(versionSpawner()), Effect.scoped),
+    );
+
+    it.effect("uses the configured Kimi binary for the version probe", () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const emptyHome = yield* fileSystem.makeTempDirectoryScoped({ prefix: "kimi-home-" });
+        const status = yield* makeCheckKimiCodeProviderStatus("/custom/bin/kimi", emptyHome);
+        assert.strictEqual(status.status, "ready");
+      }).pipe(Effect.provide(versionSpawner("/custom/bin/kimi")), Effect.scoped),
+    );
+
+    it.effect("returns unavailable when the Kimi CLI is missing", () =>
+      Effect.gen(function* () {
+        const status = yield* makeCheckKimiCodeProviderStatus();
+        assert.strictEqual(status.provider, "kimiCode");
+        assert.strictEqual(status.status, "error");
+        assert.strictEqual(status.available, false);
+        assert.strictEqual(status.authStatus, "unknown");
+        assert.strictEqual(
+          status.message,
+          "Kimi Code CLI (`kimi`) is not installed or not on PATH.",
+        );
+      }).pipe(Effect.provide(failingSpawnerLayer("spawn kimi ENOENT"))),
     );
   });
 

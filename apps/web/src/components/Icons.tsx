@@ -339,6 +339,17 @@ export const GrokIcon: Icon = (props) => (
   </svg>
 );
 
+// PLACEHOLDER: neutral "K" lettermark, not Moonshot's official Kimi brand asset.
+// Replace with the official mark before upstreaming this provider.
+export const KimiCodeIcon: Icon = (props) => (
+  <svg {...props} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      fill="currentColor"
+      d="M5 3h2.6v7.4L14.4 3H17.7l-6.1 6.7 6.4 11.3h-3l-5-8.9-2.4 2.6V21H5V3Z"
+    />
+  </svg>
+);
+
 export const PiIcon: Icon = (props) => (
   <svg {...props} viewBox="0 0 800 800" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path

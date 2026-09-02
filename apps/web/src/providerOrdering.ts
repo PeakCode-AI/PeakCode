@@ -12,6 +12,7 @@ export const DEFAULT_PROVIDER_ORDER: readonly ProviderKind[] = [
   "gemini",
   "grok",
   "kilo",
+  "kimiCode",
   "opencode",
   "pi",
 ];

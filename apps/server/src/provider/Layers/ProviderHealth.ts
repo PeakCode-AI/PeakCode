@@ -83,6 +83,7 @@ const CURSOR_PROVIDER = "cursor" as const;
 const GEMINI_PROVIDER = "gemini" as const;
 const GROK_PROVIDER = "grok" as const;
 const KILO_PROVIDER = "kilo" as const;
+const KIMI_CODE_PROVIDER = "kimiCode" as const;
 const OPENCODE_PROVIDER = "opencode" as const;
 const PI_PROVIDER = "pi" as const;
 type ProviderStatuses = ReadonlyArray<ServerProviderStatus>;
@@ -94,6 +95,7 @@ const PROVIDERS = [
   GEMINI_PROVIDER,
   GROK_PROVIDER,
   KILO_PROVIDER,
+  KIMI_CODE_PROVIDER,
   OPENCODE_PROVIDER,
   PI_PROVIDER,
 ] as const satisfies ReadonlyArray<ProviderKind>;
@@ -771,6 +773,15 @@ const runGrokCommand = (args: ReadonlyArray<string>, executable = "grok") =>
     ),
   );
 
+const runKimiCodeCommand = (args: ReadonlyArray<string>, executable = "kimi") =>
+  runProviderCommand(executable, args).pipe(
+    Effect.flatMap((result) =>
+      isWindowsShellCommandMissingResult({ code: result.code, stderr: result.stderr })
+        ? Effect.fail(new Error(`spawn ${executable} ENOENT`))
+        : Effect.succeed(result),
+    ),
+  );
+
 const runOpenCodeCommand = (args: ReadonlyArray<string>, executable = "opencode") =>
   runProviderCommand(executable, args).pipe(
     Effect.flatMap((result) =>
@@ -1347,6 +1358,97 @@ export const makeCheckGrokProviderStatus = (
 
 export const checkGrokProviderStatus = makeCheckGrokProviderStatus();
 
+// ── Kimi Code health check ──────────────────────────────────────────
+
+/**
+ * Kimi Code stores its device-code credentials as a JSON file under the CLI
+ * home. Presence of that file is the only local signal that `kimi acp` will
+ * open a session without an interactive login, so it drives `authStatus`.
+ */
+const kimiCodeCredentialsPath = (path: Path.Path, homeDir?: string) =>
+  path.join(homeDir ?? OS.homedir(), ".kimi-code", "credentials", "kimi-code.json");
+
+export const makeCheckKimiCodeProviderStatus = (
+  binaryPath?: string,
+  homeDir?: string,
+): Effect.Effect<
+  ServerProviderStatus,
+  never,
+  ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path
+> =>
+  Effect.gen(function* () {
+    const checkedAt = new Date().toISOString();
+    const executable = nonEmptyTrimmed(binaryPath) ?? "kimi";
+
+    const versionProbe = yield* runCommandHealthProbe(
+      runKimiCodeCommand(["--version"], executable),
+    );
+
+    if (Result.isFailure(versionProbe)) {
+      const error = versionProbe.failure;
+      return {
+        provider: KIMI_CODE_PROVIDER,
+        status: "error" as const,
+        available: false,
+        authStatus: "unknown" as const,
+        checkedAt,
+        message: isCommandMissingCause(error)
+          ? "Kimi Code CLI (`kimi`) is not installed or not on PATH."
+          : `Failed to execute Kimi Code CLI health check: ${error instanceof Error ? error.message : String(error)}.`,
+      } satisfies ServerProviderStatus;
+    }
+
+    if (Option.isNone(versionProbe.success)) {
+      return {
+        provider: KIMI_CODE_PROVIDER,
+        status: "error" as const,
+        available: false,
+        authStatus: "unknown" as const,
+        checkedAt,
+        message: "Kimi Code CLI is installed but failed to run. Timed out while running command.",
+      } satisfies ServerProviderStatus;
+    }
+
+    const version = versionProbe.success.value;
+    if (version.code !== 0) {
+      const detail = detailFromResult(version);
+      return {
+        provider: KIMI_CODE_PROVIDER,
+        status: "error" as const,
+        available: false,
+        authStatus: "unknown" as const,
+        checkedAt,
+        message: detail
+          ? `Kimi Code CLI is installed but failed to run. ${detail}`
+          : "Kimi Code CLI is installed but failed to run.",
+      } satisfies ServerProviderStatus;
+    }
+
+    const parsedVersion = parseGenericCliVersion(`${version.stdout}\n${version.stderr}`);
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const hasCredentials = yield* fileSystem
+      .exists(kimiCodeCredentialsPath(path, homeDir))
+      .pipe(Effect.orElseSucceed(() => false));
+
+    return {
+      provider: KIMI_CODE_PROVIDER,
+      status: "ready" as const,
+      available: true,
+      authStatus: hasCredentials ? ("authenticated" as const) : ("unauthenticated" as const),
+      version: parsedVersion,
+      checkedAt,
+      ...(hasCredentials
+        ? { authType: "oauth", authLabel: "Kimi account" }
+        : {
+            message:
+              "Kimi Code CLI is installed. Run `kimi login` to authenticate before starting a session.",
+          }),
+    } satisfies ServerProviderStatus;
+  });
+
+export const checkKimiCodeProviderStatus = makeCheckKimiCodeProviderStatus();
+
 // ── OpenCode health check ───────────────────────────────────────────
 
 export const makeCheckOpenCodeProviderStatus = (
@@ -1714,6 +1816,8 @@ export const ProviderHealthLive = Layer.effect(
           return settings.providers.grok.binaryPath;
         case "kilo":
           return settings.providers.kilo.binaryPath;
+        case "kimiCode":
+          return settings.providers.kimiCode.binaryPath;
         case "opencode":
           return settings.providers.opencode.binaryPath;
         case "pi":
@@ -1840,6 +1944,7 @@ export const ProviderHealthLive = Layer.effect(
               makeCheckGeminiProviderStatus(settings.providers.gemini.binaryPath),
               makeCheckGrokProviderStatus(settings.providers.grok.binaryPath),
               makeCheckKiloProviderStatus(settings.providers.kilo.binaryPath),
+              makeCheckKimiCodeProviderStatus(settings.providers.kimiCode.binaryPath),
               makeCheckOpenCodeProviderStatus(settings.providers.opencode.binaryPath),
               checkPiProviderStatus(
                 settings.providers.pi.agentDir,

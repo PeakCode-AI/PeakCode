@@ -87,6 +87,7 @@ export function useProviderDiscoveryData(selectedTab: DiscoveryTab) {
   const geminiCapabilitiesQuery = useQuery(providerComposerCapabilitiesQueryOptions("gemini"));
   const grokCapabilitiesQuery = useQuery(providerComposerCapabilitiesQueryOptions("grok"));
   const kiloCapabilitiesQuery = useQuery(providerComposerCapabilitiesQueryOptions("kilo"));
+  const kimiCodeCapabilitiesQuery = useQuery(providerComposerCapabilitiesQueryOptions("kimiCode"));
   const openCodeCapabilitiesQuery = useQuery(providerComposerCapabilitiesQueryOptions("opencode"));
   const piCapabilitiesQuery = useQuery(providerComposerCapabilitiesQueryOptions("pi"));
 
@@ -116,6 +117,10 @@ export function useProviderDiscoveryData(selectedTab: DiscoveryTab) {
         plugins: supportsPluginDiscovery(kiloCapabilitiesQuery.data),
         skills: supportsSkillDiscovery(kiloCapabilitiesQuery.data),
       },
+      kimiCode: {
+        plugins: supportsPluginDiscovery(kimiCodeCapabilitiesQuery.data),
+        skills: supportsSkillDiscovery(kimiCodeCapabilitiesQuery.data),
+      },
       opencode: {
         plugins: supportsPluginDiscovery(openCodeCapabilitiesQuery.data),
         skills: supportsSkillDiscovery(openCodeCapabilitiesQuery.data),
@@ -132,6 +137,7 @@ export function useProviderDiscoveryData(selectedTab: DiscoveryTab) {
       geminiCapabilitiesQuery.data,
       grokCapabilitiesQuery.data,
       kiloCapabilitiesQuery.data,
+      kimiCodeCapabilitiesQuery.data,
       openCodeCapabilitiesQuery.data,
       piCapabilitiesQuery.data,
     ],

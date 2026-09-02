@@ -36,6 +36,10 @@ const MODEL_OPTIONS_BY_PROVIDER = {
       upstreamProviderName: "Kilo",
     },
   ],
+  kimiCode: [
+    { slug: "kimi-code/k3-256k", name: "K3-256k" },
+    { slug: "kimi-code/k3", name: "K3" },
+  ],
   opencode: [
     {
       slug: "opencode/nemotron-3-super-free",

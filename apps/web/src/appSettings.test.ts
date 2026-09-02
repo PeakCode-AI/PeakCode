@@ -154,6 +154,7 @@ describe("resolveAppModelSelection", () => {
           gemini: [],
           grok: [],
           kilo: [],
+          kimiCode: [],
           opencode: [],
           pi: [],
         },
@@ -173,6 +174,7 @@ describe("resolveAppModelSelection", () => {
           gemini: [],
           grok: [],
           kilo: [],
+          kimiCode: [],
           opencode: [],
           pi: [],
         },
@@ -192,6 +194,7 @@ describe("resolveAppModelSelection", () => {
           gemini: [],
           grok: [],
           kilo: [],
+          kimiCode: [],
           opencode: [],
           pi: [],
         },
@@ -211,6 +214,7 @@ describe("resolveAppModelSelection", () => {
           gemini: [],
           grok: [],
           kilo: [],
+          kimiCode: [],
           opencode: [],
           pi: [],
         },
@@ -230,6 +234,7 @@ describe("resolveAppModelSelection", () => {
           gemini: [],
           grok: [],
           kilo: [],
+          kimiCode: [],
           opencode: [],
           pi: [],
         },
@@ -319,6 +324,7 @@ describe("getProviderStartOptions", () => {
         kiloBinaryPath: "",
         kiloServerPassword: "",
         kiloServerUrl: "",
+        kimiCodeBinaryPath: "",
         openCodeBinaryPath: "",
         openCodeServerPassword: "",
         openCodeServerUrl: "",
@@ -358,6 +364,7 @@ describe("getProviderStartOptions", () => {
         kiloBinaryPath: "",
         kiloServerPassword: "",
         kiloServerUrl: "",
+        kimiCodeBinaryPath: "",
         openCodeBinaryPath: "",
         openCodeServerPassword: "",
         openCodeServerUrl: "",
@@ -376,6 +383,7 @@ describe("provider-indexed custom model settings", () => {
     customGeminiModels: ["gemini/custom-flash"],
     customGrokModels: ["grok/custom-fast"],
     customKiloModels: ["kilo/kilo-auto/free"],
+    customKimiCodeModels: ["kimi-code/custom-k3"],
     customOpenCodeModels: ["openrouter/gpt-oss-120b"],
     customPiModels: ["anthropic/custom-pi"],
   } as const;
@@ -388,6 +396,7 @@ describe("provider-indexed custom model settings", () => {
       "gemini",
       "grok",
       "kilo",
+      "kimiCode",
       "opencode",
       "pi",
     ]);
@@ -412,6 +421,7 @@ describe("provider-indexed custom model settings", () => {
       customGeminiModels: ["gemini/default-flash"],
       customGrokModels: ["grok/default-fast"],
       customKiloModels: ["kilo/default-auto"],
+      customKimiCodeModels: ["kimi-code/default-k3"],
       customOpenCodeModels: ["openai/gpt-5"],
       customPiModels: ["anthropic/default-pi"],
     } as const;
@@ -470,6 +480,12 @@ describe("provider-indexed custom model settings", () => {
     });
   });
 
+  it("patches custom models for kimiCode", () => {
+    expect(patchCustomModels("kimiCode", ["kimi-code/custom-k3"])).toEqual({
+      customKimiCodeModels: ["kimi-code/custom-k3"],
+    });
+  });
+
   it("patches custom models for pi", () => {
     expect(patchCustomModels("pi", ["anthropic/custom-pi"])).toEqual({
       customPiModels: ["anthropic/custom-pi"],
@@ -484,6 +500,7 @@ describe("provider-indexed custom model settings", () => {
       gemini: ["gemini/custom-flash"],
       grok: ["grok/custom-fast"],
       kilo: ["kilo/kilo-auto/free"],
+      kimiCode: ["kimi-code/custom-k3"],
       opencode: ["openrouter/gpt-oss-120b"],
       pi: ["anthropic/custom-pi"],
     });
@@ -526,6 +543,7 @@ describe("provider-indexed custom model settings", () => {
       customGeminiModels: [" auto-gemini-3 ", "gemini/custom-flash", "gemini/custom-flash"],
       customGrokModels: [" grok-build ", "grok/custom-fast", "grok/custom-fast"],
       customKiloModels: [" kilo/kilo-auto/free ", "kilo/kilo-auto/free"],
+      customKimiCodeModels: [" kimi-code/k3 "],
       customOpenCodeModels: [
         " openai/gpt-5 ",
         "openrouter/gpt-oss-120b",
@@ -607,6 +625,7 @@ describe("AppSettingsSchema", () => {
       customGeminiModels: [],
       customGrokModels: [],
       customKiloModels: [],
+      customKimiCodeModels: [],
       customOpenCodeModels: [],
       customPiModels: [],
     });

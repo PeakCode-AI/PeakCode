@@ -298,6 +298,11 @@ describe("wsNativeApi", () => {
             serverPassword: "",
             customModels: [],
           },
+          kimiCode: {
+            enabled: true,
+            binaryPath: "kimi",
+            customModels: [],
+          },
           opencode: {
             enabled: true,
             binaryPath: "opencode",

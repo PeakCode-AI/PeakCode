@@ -29,13 +29,18 @@ export const PI_THINKING_LEVEL_OPTIONS = [
 export type PiThinkingLevel = (typeof PI_THINKING_LEVEL_OPTIONS)[number];
 export const GROK_REASONING_EFFORT_OPTIONS = ["none", "low", "medium", "high"] as const;
 export type GrokReasoningEffort = (typeof GROK_REASONING_EFFORT_OPTIONS)[number];
+// Kimi Code exposes thinking as an ACP `session/set_config_option` select with
+// exactly these two values; see the `thinking` configOption in `session/new`.
+export const KIMI_CODE_THINKING_OPTIONS = ["low", "high"] as const;
+export type KimiCodeThinkingLevel = (typeof KIMI_CODE_THINKING_OPTIONS)[number];
 export type ProviderReasoningEffort =
   | CodexReasoningEffort
   | ClaudeCodeEffort
   | GeminiThinkingLevel
   | `${GeminiThinkingBudget}`
   | PiThinkingLevel
-  | GrokReasoningEffort;
+  | GrokReasoningEffort
+  | KimiCodeThinkingLevel;
 
 export const ProviderOptionChoice = Schema.Struct({
   id: TrimmedNonEmptyString,
@@ -127,6 +132,11 @@ export const GrokModelOptions = Schema.Struct({
 });
 export type GrokModelOptions = typeof GrokModelOptions.Type;
 
+export const KimiCodeModelOptions = Schema.Struct({
+  thinking: Schema.optional(Schema.Literals(KIMI_CODE_THINKING_OPTIONS)),
+});
+export type KimiCodeModelOptions = typeof KimiCodeModelOptions.Type;
+
 export const ProviderModelOptions = Schema.Struct({
   codex: Schema.optional(CodexModelOptions),
   claudeAgent: Schema.optional(ClaudeModelOptions),
@@ -134,6 +144,7 @@ export const ProviderModelOptions = Schema.Struct({
   gemini: Schema.optional(GeminiModelOptions),
   grok: Schema.optional(GrokModelOptions),
   kilo: Schema.optional(OpenCodeModelOptions),
+  kimiCode: Schema.optional(KimiCodeModelOptions),
   opencode: Schema.optional(OpenCodeModelOptions),
   pi: Schema.optional(PiModelOptions),
 });
@@ -203,6 +214,20 @@ const GROK_BUILD_CAPABILITIES: ModelCapabilities = {
     { value: "low", label: "Low", isDefault: true },
     { value: "medium", label: "Medium" },
     { value: "high", label: "High" },
+  ],
+  supportsFastMode: false,
+  supportsThinkingToggle: false,
+  promptInjectedEffortLevels: [],
+  contextWindowOptions: [],
+};
+
+// Kimi Code reports `thinking` as a two-value select whose current value is
+// "high" on a fresh session. Every Kimi model advertises the same thinking
+// support, so one constant covers the catalogue.
+const KIMI_CODE_CAPABILITIES: ModelCapabilities = {
+  reasoningEffortLevels: [
+    { value: "low", label: "Thinking Low" },
+    { value: "high", label: "Thinking High", isDefault: true },
   ],
   supportsFastMode: false,
   supportsThinkingToggle: false,
@@ -485,6 +510,31 @@ export const MODEL_OPTIONS_BY_PROVIDER = {
       capabilities: GROK_BUILD_CAPABILITIES,
     },
   ],
+  // Static fallback only. Kimi Code reports its live catalogue in the `model`
+  // configOption returned by `session/new`, which supersedes this list once a
+  // session exists (see `supportsRuntimeModelList`).
+  kimiCode: [
+    {
+      slug: "kimi-code/k3-256k",
+      name: "K3-256k",
+      capabilities: KIMI_CODE_CAPABILITIES,
+    },
+    {
+      slug: "kimi-code/k3",
+      name: "K3",
+      capabilities: KIMI_CODE_CAPABILITIES,
+    },
+    {
+      slug: "kimi-code/kimi-for-coding",
+      name: "K2.7 Coding",
+      capabilities: KIMI_CODE_CAPABILITIES,
+    },
+    {
+      slug: "kimi-code/kimi-for-coding-highspeed",
+      name: "K2.7 Coding Highspeed",
+      capabilities: KIMI_CODE_CAPABILITIES,
+    },
+  ],
   opencode: [
     {
       slug: "openai/gpt-5",
@@ -583,6 +633,7 @@ export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderWithDefaultModel, ModelSl
   gemini: "auto-gemini-3",
   grok: "grok-build",
   kilo: "kilo/kilo-auto/free",
+  kimiCode: "kimi-code/k3-256k",
   opencode: "openai/gpt-5",
 };
 
@@ -665,6 +716,13 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string,
     "code-fast": "grok-build-0.1",
   },
   kilo: {},
+  kimiCode: {
+    k3: "kimi-code/k3",
+    "k3-256k": "kimi-code/k3-256k",
+    kimi: "kimi-code/k3-256k",
+    "kimi-for-coding": "kimi-code/kimi-for-coding",
+    "kimi-for-coding-highspeed": "kimi-code/kimi-for-coding-highspeed",
+  },
   opencode: {},
   pi: {},
 };
@@ -700,6 +758,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<ProviderKind, string> = {
   gemini: "Gemini",
   grok: "Grok",
   kilo: "Kilo",
+  kimiCode: "Kimi Code",
   opencode: "OpenCode",
   pi: "Pi",
 };

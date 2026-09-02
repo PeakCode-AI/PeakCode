@@ -10,6 +10,7 @@ import type {
   GeminiModelSelection,
   GrokModelOptions,
   GrokModelSelection,
+  KimiCodeModelOptions,
   KiloModelSelection,
   ModelSelection,
   OpenCodeModelOptions,
@@ -292,6 +293,14 @@ export function buildModelSelection(
             provider,
             model,
             options: options as GrokModelOptions,
+          }
+        : { provider, model };
+    case "kimiCode":
+      return options
+        ? {
+            provider,
+            model,
+            options: options as KimiCodeModelOptions,
           }
         : { provider, model };
     case "kilo":

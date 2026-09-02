@@ -63,6 +63,7 @@ type CustomModelSettingsKey =
   | "customGeminiModels"
   | "customGrokModels"
   | "customKiloModels"
+  | "customKimiCodeModels"
   | "customOpenCodeModels"
   | "customPiModels";
 export type ProviderCustomModelConfig = {
@@ -82,6 +83,7 @@ const BUILT_IN_MODEL_SLUGS_BY_PROVIDER: Record<ProviderKind, ReadonlySet<string>
   gemini: new Set(getModelOptions("gemini").map((option) => option.slug)),
   grok: new Set(getModelOptions("grok").map((option) => option.slug)),
   kilo: new Set(getModelOptions("kilo").map((option) => option.slug)),
+  kimiCode: new Set(getModelOptions("kimiCode").map((option) => option.slug)),
   opencode: new Set(getModelOptions("opencode").map((option) => option.slug)),
   pi: new Set(getModelOptions("pi").map((option) => option.slug)),
 };
@@ -112,6 +114,7 @@ export const AppSettingsSchema = Schema.Struct({
   kiloBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   kiloServerUrl: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   kiloServerPassword: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
+  kimiCodeBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   openCodeBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   piBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   piAgentDir: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
@@ -142,6 +145,7 @@ export const AppSettingsSchema = Schema.Struct({
   customGeminiModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customGrokModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customKiloModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
+  customKimiCodeModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customOpenCodeModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customPiModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   textGenerationProvider: ProviderKind.pipe(withDefaults(() => "codex" as const)),
@@ -232,6 +236,15 @@ const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConf
     placeholder: "provider/model",
     example: "kilo/kilo-auto/free",
   },
+  kimiCode: {
+    provider: "kimiCode",
+    settingsKey: "customKimiCodeModels",
+    defaultSettingsKey: "customKimiCodeModels",
+    title: "Kimi Code",
+    description: "Save additional Kimi Code model slugs for the picker and `/model` command.",
+    placeholder: "kimi-code/model-slug",
+    example: "kimi-code/k3",
+  },
   opencode: {
     provider: "opencode",
     settingsKey: "customOpenCodeModels",
@@ -301,6 +314,7 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     customGeminiModels: normalizeCustomModelSlugs(settings.customGeminiModels, "gemini"),
     customGrokModels: normalizeCustomModelSlugs(settings.customGrokModels, "grok"),
     customKiloModels: normalizeCustomModelSlugs(settings.customKiloModels, "kilo"),
+    customKimiCodeModels: normalizeCustomModelSlugs(settings.customKimiCodeModels, "kimiCode"),
     customOpenCodeModels: normalizeCustomModelSlugs(settings.customOpenCodeModels, "opencode"),
     customPiModels: normalizeCustomModelSlugs(settings.customPiModels, "pi"),
     hiddenProviders: normalizeHiddenProviders(settings.hiddenProviders),
@@ -324,6 +338,7 @@ function serverSettingsToAppSettings(settings: ServerSettings): Partial<AppSetti
     kiloBinaryPath: settings.providers.kilo.binaryPath,
     kiloServerPassword: settings.providers.kilo.serverPassword,
     kiloServerUrl: settings.providers.kilo.serverUrl,
+    kimiCodeBinaryPath: settings.providers.kimiCode.binaryPath,
     openCodeBinaryPath: settings.providers.opencode.binaryPath,
     openCodeServerPassword: settings.providers.opencode.serverPassword,
     openCodeServerUrl: settings.providers.opencode.serverUrl,
@@ -335,6 +350,7 @@ function serverSettingsToAppSettings(settings: ServerSettings): Partial<AppSetti
     customGeminiModels: settings.providers.gemini.customModels,
     customGrokModels: settings.providers.grok.customModels,
     customKiloModels: settings.providers.kilo.customModels,
+    customKimiCodeModels: settings.providers.kimiCode.customModels,
     customOpenCodeModels: settings.providers.opencode.customModels,
     customPiModels: settings.providers.pi.customModels,
     textGenerationProvider: settings.textGenerationModelSelection.provider,
@@ -443,6 +459,16 @@ function appSettingsPatchToServerSettingsPatch(patch: Partial<AppSettings>): Ser
       ...(hasOwn(patch, "customKiloModels") ? { customModels: patch.customKiloModels ?? [] } : {}),
     };
   }
+  if (hasOwn(patch, "kimiCodeBinaryPath") || hasOwn(patch, "customKimiCodeModels")) {
+    providers.kimiCode = {
+      ...(hasOwn(patch, "kimiCodeBinaryPath")
+        ? { binaryPath: patch.kimiCodeBinaryPath ?? "" }
+        : {}),
+      ...(hasOwn(patch, "customKimiCodeModels")
+        ? { customModels: patch.customKimiCodeModels ?? [] }
+        : {}),
+    };
+  }
   if (
     hasOwn(patch, "openCodeBinaryPath") ||
     hasOwn(patch, "openCodeServerUrl") ||
@@ -501,6 +527,7 @@ function buildInitialServerSettingsMigrationPatch(settings: AppSettings): Server
     "kiloBinaryPath",
     "kiloServerPassword",
     "kiloServerUrl",
+    "kimiCodeBinaryPath",
     "openCodeBinaryPath",
     "openCodeServerPassword",
     "openCodeServerUrl",
@@ -521,6 +548,7 @@ function buildInitialServerSettingsMigrationPatch(settings: AppSettings): Server
     "customGeminiModels",
     "customGrokModels",
     "customKiloModels",
+    "customKimiCodeModels",
     "customOpenCodeModels",
     "customPiModels",
   ] as const) {
@@ -569,6 +597,7 @@ export function getCustomModelsByProvider(
     gemini: getCustomModelsForProvider(settings, "gemini"),
     grok: getCustomModelsForProvider(settings, "grok"),
     kilo: getCustomModelsForProvider(settings, "kilo"),
+    kimiCode: getCustomModelsForProvider(settings, "kimiCode"),
     opencode: getCustomModelsForProvider(settings, "opencode"),
     pi: getCustomModelsForProvider(settings, "pi"),
   };
@@ -688,6 +717,7 @@ export function getCustomModelOptionsByProvider(
     gemini: getAppModelOptions("gemini", customModelsByProvider.gemini),
     grok: getAppModelOptions("grok", customModelsByProvider.grok),
     kilo: getAppModelOptions("kilo", customModelsByProvider.kilo),
+    kimiCode: getAppModelOptions("kimiCode", customModelsByProvider.kimiCode),
     opencode: getAppModelOptions("opencode", customModelsByProvider.opencode),
     pi: getAppModelOptions("pi", customModelsByProvider.pi),
   };
@@ -706,6 +736,7 @@ export function getProviderStartOptions(
     | "kiloBinaryPath"
     | "kiloServerPassword"
     | "kiloServerUrl"
+    | "kimiCodeBinaryPath"
     | "openCodeBinaryPath"
     | "openCodeServerPassword"
     | "openCodeServerUrl"
@@ -760,6 +791,13 @@ export function getProviderStartOptions(
           },
         }
       : {}),
+    ...(settings.kimiCodeBinaryPath
+      ? {
+          kimiCode: {
+            binaryPath: settings.kimiCodeBinaryPath,
+          },
+        }
+      : {}),
     ...(settings.openCodeBinaryPath || settings.openCodeServerUrl || settings.openCodeServerPassword
       ? {
           opencode: {
@@ -793,6 +831,7 @@ export function getCustomBinaryPathForProvider(
     | "geminiBinaryPath"
     | "grokBinaryPath"
     | "kiloBinaryPath"
+    | "kimiCodeBinaryPath"
     | "openCodeBinaryPath"
     | "piBinaryPath"
   >,
@@ -811,6 +850,8 @@ export function getCustomBinaryPathForProvider(
       return settings.grokBinaryPath;
     case "kilo":
       return settings.kiloBinaryPath;
+    case "kimiCode":
+      return settings.kimiCodeBinaryPath;
     case "opencode":
       return settings.openCodeBinaryPath;
     case "pi":

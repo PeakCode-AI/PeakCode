@@ -278,6 +278,11 @@ const composerProviderRegistry: Record<ProviderKind, ProviderRegistryEntry> = {
     renderTraitsMenuContent: (input) => renderTraitsMenuContentForProvider("kilo", input),
     renderTraitsPicker: (input) => renderTraitsPickerForProvider("kilo", input),
   },
+  kimiCode: {
+    getState: (input) => getProviderStateFromCapabilities(input),
+    renderTraitsMenuContent: (input) => renderTraitsMenuContentForProvider("kimiCode", input),
+    renderTraitsPicker: (input) => renderTraitsPickerForProvider("kimiCode", input),
+  },
   opencode: {
     getState: (input) => getProviderStateFromCapabilities(input),
     renderTraitsMenuContent: (input) => renderTraitsMenuContentForProvider("opencode", input),

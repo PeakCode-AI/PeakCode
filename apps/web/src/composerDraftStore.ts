@@ -772,6 +772,14 @@ function makeModelSelection(
           ? { options: options as Extract<ModelSelection, { provider: "grok" }>["options"] }
           : {}),
       };
+    case "kimiCode":
+      return {
+        provider,
+        model,
+        ...(options
+          ? { options: options as Extract<ModelSelection, { provider: "kimiCode" }>["options"] }
+          : {}),
+      };
     case "kilo":
       return {
         provider,

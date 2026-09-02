@@ -838,6 +838,7 @@ function SettingsRouteView() {
     gemini: Boolean(settings.geminiBinaryPath),
     grok: Boolean(settings.grokBinaryPath),
     kilo: Boolean(settings.kiloBinaryPath || settings.kiloServerUrl || settings.kiloServerPassword),
+    kimiCode: Boolean(settings.kimiCodeBinaryPath),
     opencode: Boolean(
       settings.openCodeBinaryPath || settings.openCodeServerUrl || settings.openCodeServerPassword,
     ),
@@ -1183,6 +1184,7 @@ function SettingsRouteView() {
       gemini: false,
       grok: false,
       kilo: false,
+      kimiCode: false,
       opencode: false,
       pi: false,
     });
@@ -3071,6 +3073,7 @@ function SettingsRouteView() {
                       kiloBinaryPath: defaults.kiloBinaryPath,
                       kiloServerUrl: defaults.kiloServerUrl,
                       kiloServerPassword: defaults.kiloServerPassword,
+                      kimiCodeBinaryPath: defaults.kimiCodeBinaryPath,
                       openCodeBinaryPath: defaults.openCodeBinaryPath,
                       openCodeServerUrl: defaults.openCodeServerUrl,
                       openCodeServerPassword: defaults.openCodeServerPassword,
@@ -3084,6 +3087,7 @@ function SettingsRouteView() {
                       gemini: false,
                       grok: false,
                       kilo: false,
+                      kimiCode: false,
                       opencode: false,
                       pi: false,
                     });

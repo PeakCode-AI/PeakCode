@@ -463,6 +463,8 @@ function getProviderStartOptionsCustomBinaryPath(
       return normalizeCustomBinaryPath(providerOptions?.grok?.binaryPath);
     case "kilo":
       return normalizeCustomBinaryPath(providerOptions?.kilo?.binaryPath);
+    case "kimiCode":
+      return normalizeCustomBinaryPath(providerOptions?.kimiCode?.binaryPath);
     case "opencode":
       return normalizeCustomBinaryPath(providerOptions?.opencode?.binaryPath);
     case "cursor":
@@ -1436,6 +1438,7 @@ export default function ChatView({
       gemini: resolveHint("gemini"),
       grok: resolveHint("grok"),
       kilo: resolveHint("kilo"),
+      kimiCode: resolveHint("kimiCode"),
       opencode: resolveHint("opencode"),
       pi: resolveHint("pi"),
     };
@@ -1481,6 +1484,14 @@ export default function ChatView({
       provider: "kilo",
       binaryPath: settings.kiloBinaryPath || null,
       enabled: selectedProvider === "kilo" || lockedProvider === "kilo" || isModelPickerOpen,
+    }),
+  );
+  const kimiCodeDynamicModelsQuery = useQuery(
+    providerModelsQueryOptions({
+      provider: "kimiCode",
+      binaryPath: settings.kimiCodeBinaryPath || null,
+      enabled:
+        selectedProvider === "kimiCode" || lockedProvider === "kimiCode" || isModelPickerOpen,
     }),
   );
   const piDynamicModelsQuery = useQuery(
@@ -1555,6 +1566,11 @@ export default function ChatView({
         customModelsByProvider.kilo,
         composerModelHintByProvider.kilo,
       ),
+      kimiCode: getAppModelOptions(
+        "kimiCode",
+        customModelsByProvider.kimiCode,
+        composerModelHintByProvider.kimiCode,
+      ),
       opencode: getAppModelOptions(
         "opencode",
         customModelsByProvider.opencode,
@@ -1577,6 +1593,7 @@ export default function ChatView({
       gemini: geminiModelsQuery.data,
       grok: grokDynamicModelsQuery.data,
       kilo: kiloDynamicModelsQuery.data,
+      kimiCode: kimiCodeDynamicModelsQuery.data,
       opencode: openCodeDynamicModelsQuery.data,
       pi: piDynamicModelsQuery.data,
     };
@@ -1588,6 +1605,7 @@ export default function ChatView({
       "gemini",
       "grok",
       "kilo",
+      "kimiCode",
       "opencode",
       "pi",
     ] as const) {
@@ -1621,6 +1639,7 @@ export default function ChatView({
     geminiModelsQuery.data,
     grokDynamicModelsQuery.data,
     kiloDynamicModelsQuery.data,
+    kimiCodeDynamicModelsQuery.data,
     openCodeDynamicModelsQuery.data,
     piDynamicModelsQuery.data,
   ]);
@@ -1640,6 +1659,7 @@ export default function ChatView({
       gemini: geminiModelsQuery.data?.models ?? [],
       grok: grokDynamicModelsQuery.data?.models ?? [],
       kilo: kiloDynamicModelsQuery.data?.models ?? [],
+      kimiCode: kimiCodeDynamicModelsQuery.data?.models ?? [],
       opencode: openCodeDynamicModelsQuery.data?.models ?? [],
       pi: piDynamicModelsQuery.data?.models ?? [],
     }),
@@ -1650,6 +1670,7 @@ export default function ChatView({
       geminiModelsQuery.data?.models,
       grokDynamicModelsQuery.data?.models,
       kiloDynamicModelsQuery.data?.models,
+      kimiCodeDynamicModelsQuery.data?.models,
       openCodeDynamicModelsQuery.data?.models,
       piDynamicModelsQuery.data?.models,
     ],
@@ -1661,6 +1682,7 @@ export default function ChatView({
     gemini: geminiModelsQuery,
     grok: grokDynamicModelsQuery,
     kilo: kiloDynamicModelsQuery,
+    kimiCode: kimiCodeDynamicModelsQuery,
     opencode: openCodeDynamicModelsQuery,
     pi: piDynamicModelsQuery,
   } as const;

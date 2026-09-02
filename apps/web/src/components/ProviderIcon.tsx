@@ -14,6 +14,7 @@ import {
   Gemini,
   GrokIcon,
   type Icon,
+  KimiCodeIcon,
   KiloIcon,
   OpenAI,
   OpenCodeIcon,
@@ -29,6 +30,7 @@ export const PROVIDER_ICON_COMPONENT_BY_PROVIDER: Record<ProviderKind, Icon> = {
   gemini: Gemini,
   grok: GrokIcon,
   kilo: KiloIcon,
+  kimiCode: KimiCodeIcon,
   opencode: OpenCodeIcon,
   pi: PiIcon,
 };

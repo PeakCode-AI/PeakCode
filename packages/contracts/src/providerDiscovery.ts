@@ -14,6 +14,7 @@ const ProviderDiscoveryKind = Schema.Literals([
   "gemini",
   "grok",
   "kilo",
+  "kimiCode",
   "opencode",
   "pi",
 ]);
