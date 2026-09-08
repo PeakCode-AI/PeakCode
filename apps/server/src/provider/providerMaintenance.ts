@@ -12,7 +12,7 @@ const LATEST_VERSION_TIMEOUT_MS = 4_000;
 const PROVIDER_UPDATE_ACTION_MESSAGE = "Install the update now or review provider settings.";
 const WINDOWS_EXECUTABLE_EXTENSIONS = ["", ".exe", ".cmd", ".bat"] as const;
 
-type ProviderInstallSource = "npm" | "bun" | "pnpm" | "homebrew" | "native" | "unknown";
+type ProviderInstallSource = "npm" | "bun" | "pnpm" | "homebrew" | "native" | "project" | "unknown";
 
 interface ParsedSemver {
   readonly major: number;
@@ -39,6 +39,7 @@ export interface ProviderMaintenanceCommandAction {
   readonly executable: string;
   readonly args: ReadonlyArray<string>;
   readonly lockKey: string;
+  readonly cwd?: string | undefined;
 }
 
 export interface ProviderMaintenanceCapabilityResolutionOptions {
@@ -198,10 +199,11 @@ function hasPathSeparator(value: string): boolean {
 export function makeProviderMaintenanceCapabilities(input: {
   readonly provider: ProviderKind;
   readonly packageName: string | null;
-  readonly latestVersionSource?: ProviderLatestVersionSource | null;
+  readonly latestVersionSource?: ProviderLatestVersionSource | null | undefined;
   readonly updateExecutable: string | null;
   readonly updateArgs: ReadonlyArray<string>;
   readonly updateLockKey: string | null;
+  readonly updateCwd?: string | null | undefined;
 }): ProviderMaintenanceCapabilities {
   const update =
     input.updateExecutable === null || input.updateLockKey === null
@@ -211,6 +213,7 @@ export function makeProviderMaintenanceCapabilities(input: {
           executable: input.updateExecutable,
           args: input.updateArgs,
           lockKey: input.updateLockKey,
+          ...(input.updateCwd ? { cwd: input.updateCwd } : {}),
         };
   return {
     provider: input.provider,
@@ -329,6 +332,9 @@ function detectInstallSource(
   definition: PackageManagedProviderMaintenanceDefinition,
   commandPath: string,
 ): ProviderInstallSource {
+  if (isProjectNodeModulesCommandPath(commandPath)) {
+    return "project";
+  }
   if (definition.nativeUpdate?.isCommandPath?.(commandPath)) {
     return "native";
   }
@@ -347,12 +353,49 @@ function detectInstallSource(
   return "unknown";
 }
 
+function extractProjectDirectory(commandPath: string): string | undefined {
+  const normalized = normalizeCommandPath(commandPath);
+  const index = normalized.indexOf("/node_modules");
+  if (index !== -1) {
+    return commandPath.slice(0, index);
+  }
+  return undefined;
+}
+
+function makeProjectDependencyProviderMaintenanceCapabilities(input: {
+  readonly definition: PackageManagedProviderMaintenanceDefinition;
+  readonly commandPath?: string | undefined;
+}): ProviderMaintenanceCapabilities {
+  const { definition, commandPath } = input;
+  const projectDir = commandPath ? extractProjectDirectory(commandPath) : undefined;
+  const packages =
+    definition.provider === "pi"
+      ? [definition.npmPackageName, "@earendil-works/pi-ai", "@earendil-works/pi-agent-core"]
+      : [definition.npmPackageName];
+
+  return makeProviderMaintenanceCapabilities({
+    provider: definition.provider,
+    packageName: definition.npmPackageName,
+    updateExecutable: "bun",
+    updateArgs: ["update", ...packages],
+    updateLockKey: "project-dependencies",
+    updateCwd: projectDir,
+  });
+}
+
 function makeProviderMaintenanceForInstallSource(input: {
   readonly definition: PackageManagedProviderMaintenanceDefinition;
   readonly installSource: ProviderInstallSource;
-  readonly executable?: string | null;
+  readonly executable?: string | null | undefined;
+  readonly commandPath?: string | undefined;
 }): ProviderMaintenanceCapabilities {
-  const { definition, installSource, executable } = input;
+  const { definition, installSource, executable, commandPath } = input;
+  if (installSource === "project") {
+    return makeProjectDependencyProviderMaintenanceCapabilities({
+      definition,
+      commandPath,
+    });
+  }
   if (
     definition.nativeUpdate?.strategy === "always" &&
     !definition.nativeUpdate.excludedInstallSources?.includes(installSource)
@@ -392,6 +435,18 @@ function makeProviderMaintenanceForInstallSource(input: {
   });
 }
 
+function isProjectNodeModulesCommandPath(commandPath: string): boolean {
+  const normalized = normalizeCommandPath(commandPath);
+  return (
+    (normalized.includes("/node_modules/.bin/") || normalized.includes("/node_modules/")) &&
+    !isBunGlobalCommandPath(normalized) &&
+    !isPnpmGlobalCommandPath(normalized) &&
+    !normalized.includes("/.npm-global/") &&
+    !normalized.startsWith("/usr/local/") &&
+    !normalized.startsWith("/opt/homebrew/")
+  );
+}
+
 function isBunGlobalCommandPath(commandPath: string): boolean {
   return normalizeCommandPath(commandPath).includes("/.bun/bin/");
 }
@@ -410,7 +465,7 @@ function isPnpmGlobalCommandPath(commandPath: string): boolean {
 function isNpmGlobalCommandPath(commandPath: string): boolean {
   const normalized = normalizeCommandPath(commandPath);
   return (
-    normalized.includes("/node_modules/.bin/") ||
+    normalized.includes("/.npm-global/") ||
     normalized.includes("/lib/node_modules/") ||
     normalized.includes("/npm/node_modules/")
   );
@@ -452,6 +507,7 @@ export function resolvePackageManagedProviderMaintenance(
         definition,
         installSource,
         executable: binaryPath,
+        commandPath,
       });
     }
   }

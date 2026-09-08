@@ -111,6 +111,27 @@ describe("providerMaintenance", () => {
     });
   });
 
+  it("resolves bun update for project node_modules binaries", () => {
+    const capabilities = resolvePackageManagedProviderMaintenance(PI_NATIVE_DEFINITION, {
+      binaryPath: "pi",
+      realCommandPath: "/Users/test/workspace/PeakCode/apps/server/node_modules/.bin/pi",
+    });
+
+    assert.deepStrictEqual(capabilities.update, {
+      command:
+        "bun update @earendil-works/pi-coding-agent @earendil-works/pi-ai @earendil-works/pi-agent-core",
+      executable: "bun",
+      args: [
+        "update",
+        "@earendil-works/pi-coding-agent",
+        "@earendil-works/pi-ai",
+        "@earendil-works/pi-agent-core",
+      ],
+      lockKey: "project-dependencies",
+      cwd: "/Users/test/workspace/PeakCode/apps/server",
+    });
+  });
+
   it("marks older semver versions as behind latest", () => {
     const advisory = createProviderVersionAdvisory({
       provider: "pi",

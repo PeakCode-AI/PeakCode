@@ -72,6 +72,9 @@ const UPDATE_TIMEOUT_MS = 5 * 60_000;
 
 function isPiNativeCommandPath(commandPath: string): boolean {
   const normalized = normalizeCommandPath(commandPath);
+  if (normalized.includes("/node_modules/")) {
+    return false;
+  }
   return (
     normalized.endsWith("/.pi/") || normalized.includes("/.pi/bin/pi") || normalized.endsWith("/pi")
   );
@@ -90,6 +93,7 @@ const PACKAGE_MANAGED_PROVIDER_UPDATES: Partial<
       args: () => ["update"],
       lockKey: "pi-native",
       strategy: "always",
+      excludedInstallSources: ["project"],
       isCommandPath: isPiNativeCommandPath,
     },
   },
@@ -523,9 +527,11 @@ export const ProviderHealthLive = Layer.effect(
     const runUpdateCommand = Effect.fn("runProviderUpdateCommand")(function* (input: {
       readonly command: string;
       readonly args: ReadonlyArray<string>;
+      readonly cwd?: string | undefined;
     }) {
       const child = yield* spawner.spawn(
         ChildProcess.make(input.command, [...input.args], {
+          cwd: input.cwd,
           shell: process.platform === "win32",
           env: process.env,
         }),
@@ -589,6 +595,7 @@ export const ProviderHealthLive = Layer.effect(
         const commandResult = yield* runUpdateCommand({
           command: update.executable,
           args: update.args,
+          cwd: update.cwd,
         }).pipe(
           Effect.scoped,
           Effect.timeoutOption(Duration.millis(UPDATE_TIMEOUT_MS)),
@@ -632,15 +639,19 @@ export const ProviderHealthLive = Layer.effect(
         const providers = yield* refreshNow.pipe(Effect.mapError(toUpdateError));
         const refreshed = providers.find((status) => status.provider === provider);
         const stillOutdated = refreshed?.versionAdvisory?.status === "behind_latest";
+        const isProjectDeps = update.lockKey === "project-dependencies";
         const finalProviders = yield* setProviderUpdateState(
           provider,
           makeUpdateState({
-            status: stillOutdated ? "unchanged" : "succeeded",
+            status: stillOutdated && !isProjectDeps ? "unchanged" : "succeeded",
             startedAt,
             finishedAt,
-            message: stillOutdated
-              ? "Update command completed, but Peak Code still detects an outdated provider version."
-              : "Provider updated.",
+            message:
+              stillOutdated && !isProjectDeps
+                ? "Update command completed, but Peak Code still detects an outdated provider version."
+                : isProjectDeps
+                  ? "Project dependencies updated."
+                  : "Provider updated.",
             output: output ? output.slice(0, UPDATE_OUTPUT_MAX_BYTES) : null,
           }),
         );

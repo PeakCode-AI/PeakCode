@@ -18,7 +18,12 @@ import { ProviderHealth } from "../Services/ProviderHealth";
 const encoder = new TextEncoder();
 
 function makeTempAgentDir(prefix = "t3-test-pi-agent-") {
-  return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  fs.writeFileSync(
+    path.join(dir, "auth.json"),
+    JSON.stringify({ anthropic: { type: "api_key", key: "test" } }),
+  );
+  return dir;
 }
 
 function mockHandle(result: { stdout: string; stderr: string; code: number }) {
@@ -138,7 +143,8 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
     const spawnerLayer = mockSpawnerLayer((args) => {
       const joined = args.join(" ");
       if (joined === "--version") return { stdout: "pi 0.130.0\n", stderr: "", code: 0 };
-      if (joined === "update") return { stdout: "Updated to 0.131.0\n", stderr: "", code: 0 };
+      if (joined === "update" || joined.startsWith("update"))
+        return { stdout: "Updated to 0.131.0\n", stderr: "", code: 0 };
       throw new Error(`Unexpected args: ${joined}`);
     });
     return ProviderHealthLive.pipe(
