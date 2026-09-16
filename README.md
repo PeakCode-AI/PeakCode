@@ -57,6 +57,27 @@ Download from [Releases](https://github.com/PeakCode-AI/PeakCode/releases):
 | Windows  | `.exe`      |
 | Linux    | `.AppImage` |
 
+#### macOS reports the app as damaged
+
+Release builds are not signed with an Apple Developer ID yet, so Apple Silicon macOS
+blocks the downloaded app with _"Peak Code (Alpha)" is damaged and can't be opened_.
+The download itself is intact — the bundle just carries a quarantine flag and no
+notarization ticket. Clear the flag, then open the app from **Applications**:
+
+```bash
+# Adjust the path if you installed the app somewhere else
+xattr -dr com.apple.quarantine "/Applications/Peak Code (Alpha).app"
+```
+
+If macOS still refuses, open **System Settings → Privacy & Security**, scroll to the
+blocked-app notice and choose **Open Anyway**.
+
+Signed and notarized builds are produced automatically once the repository holds the
+`CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_API_KEY`, `APPLE_API_KEY_ID` and
+`APPLE_API_ISSUER` secrets. Until then `.github/workflows/release.yml` logs
+`macOS signing disabled (missing one or more Apple signing secrets)` and publishes an
+unsigned build.
+
 ### From Source
 
 ```bash

@@ -56,6 +56,25 @@ AI 编程代理功能强大，但通过原始终端使用它们体验很差。Pe
 | Windows | `.exe`      |
 | Linux   | `.AppImage` |
 
+#### macOS 提示「应用已损坏」
+
+发布包目前尚未使用 Apple Developer ID 签名，Apple Silicon 版 macOS 会拦截下载的
+应用，提示「"Peak Code (Alpha)" 已损坏，无法打开」。文件本身是完整的——只是带了
+隔离标记（quarantine），且没有公证（notarization）票据。清除该标记后，从
+**应用程序**目录打开即可：
+
+```bash
+# 如果安装在别的位置，请替换成实际路径
+xattr -dr com.apple.quarantine "/Applications/Peak Code (Alpha).app"
+```
+
+若 macOS 仍拒绝打开，进入 **系统设置 → 隐私与安全性**，找到被拦截的提示并选择
+**仍要打开**。
+
+只要仓库配置了 `CSC_LINK`、`CSC_KEY_PASSWORD`、`APPLE_API_KEY`、`APPLE_API_KEY_ID`
+和 `APPLE_API_ISSUER` 这几个密钥，构建就会自动签名并公证；在此之前，
+`.github/workflows/release.yml` 会输出 `macOS signing disabled` 并发布未签名的构建产物。
+
 ### 从源码构建
 
 ```bash
