@@ -35,6 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - App identity is unified on `com.peakcode.app` / `com.peakcode.app.dev` across the Electron dev launcher, the Windows AUMID and electron-builder's `appId`, so one app owns its taskbar grouping, shortcuts and notifications. The macOS About panel and the staged installer metadata now read **Peak Code AI**, matching the LICENSE holder. ([#20])
 - The server CLI command is `peakcode` instead of `t3`, matching the published bin name. ([#20])
 - Documentation covers the new surfaces: README (English and Chinese), `.docs/runtime-modes.md`, `.docs/encyclopedia.md`, `.docs/workspace-layout.md`, `.docs/scripts.md`, and the package tables in `CONTRIBUTING.md`, `CONTRIBUTING.zh.md` and `AGENTS.md`. ([#20])
+- [REMOTE.md](REMOTE.md) documents the SSH-tunnel setup for an agent that works on a remote dev box: the server binds its own loopback on the machine that holds the code, `ssh -L` is the only way in, and the browser stays on your laptop.
 
 ### Removed
 
