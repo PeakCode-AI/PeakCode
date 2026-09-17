@@ -42,6 +42,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Unsigned macOS releases are ad-hoc signed instead of shipping with no signature at all, which is the state macOS reports as a damaged download. The release build passes electron-builder a custom signing step (`apps/desktop/scripts/electron-builder-ad-hoc-sign.cjs`) whenever the Apple signing secrets are absent; a Developer ID build is untouched and still notarizes as before.
 - Desktop packaging (`bun run dist:desktop:*`) no longer fails on bundled `workspace:` dependencies. tsdown inlines every `@peakcode/*` package into the server bundle, so they are skipped when staging the production install. ([#20])
 - The release smoke test derives its workspace manifest fixture from the root `workspaces` globs instead of a hardcoded list, so a newly added package can no longer break the release-only steps by being absent from the fixture. ([#20])
 - Cached `.electron-runtime` bundles are re-patched when `LAUNCHER_VERSION` changes, and each patched bundle keeps its own metadata file, so Dev and Alpha can no longer validate against the other variant's stale patch. ([#20])

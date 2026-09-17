@@ -22,8 +22,30 @@ describe("createDesktopPlatformBuildConfig", () => {
     assert.equal(mac.entitlements, MAC_ENTITLEMENTS_PATH);
     assert.equal(mac.entitlementsInherit, MAC_INHERITED_ENTITLEMENTS_PATH);
     assert.equal(extendInfo.NSMicrophoneUsageDescription, MICROPHONE_USAGE_DESCRIPTION);
+    assert.equal(mac.sign, undefined);
     assert.equal(config.afterPack, undefined);
     assert.equal(config.dmg, undefined);
+  });
+
+  it("ad-hoc signs unsigned macOS builds instead of skipping signing", () => {
+    const unsigned = createDesktopPlatformBuildConfig({
+      platform: "mac",
+      target: "dmg",
+      hasMacIconComposer: false,
+      macAdHocSign: true,
+    });
+    const signed = createDesktopPlatformBuildConfig({
+      platform: "mac",
+      target: "dmg",
+      hasMacIconComposer: false,
+      macAdHocSign: false,
+    });
+
+    assert.equal(
+      (unsigned.mac as Record<string, unknown>).sign,
+      "./electron-builder-ad-hoc-sign.cjs",
+    );
+    assert.equal((signed.mac as Record<string, unknown>).sign, undefined);
   });
 
   it("preserves the icon composer packaging path for macOS builds", () => {

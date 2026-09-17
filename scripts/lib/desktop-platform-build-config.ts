@@ -9,6 +9,8 @@ export const MAC_ENTITLEMENTS_PATH = "apps/desktop/resources/entitlements.mac.pl
 export const MAC_INHERITED_ENTITLEMENTS_PATH =
   "apps/desktop/resources/entitlements.mac.inherit.plist";
 const MAC_AFTER_PACK_HOOK_PATH = "./electron-builder-after-pack.cjs";
+export const MAC_AD_HOC_SIGN_MODULE_FILE_NAME = "electron-builder-ad-hoc-sign.cjs";
+const MAC_AD_HOC_SIGN_MODULE_PATH = `./${MAC_AD_HOC_SIGN_MODULE_FILE_NAME}`;
 const MAC_DMG_ICON_PATH = "icon.icns";
 
 export interface DesktopPlatformBuildConfig {
@@ -23,6 +25,7 @@ export interface DesktopPlatformBuildConfig {
 
 export interface CreateDesktopPlatformBuildConfigInput {
   readonly hasMacIconComposer: boolean;
+  readonly macAdHocSign?: boolean;
   readonly platform: "linux" | "mac" | "win";
   readonly target: string;
   readonly windowsAzureSignOptions?: Record<string, string>;
@@ -39,6 +42,9 @@ export function createDesktopPlatformBuildConfig(
       hardenedRuntime: true,
       entitlements: MAC_ENTITLEMENTS_PATH,
       entitlementsInherit: MAC_INHERITED_ENTITLEMENTS_PATH,
+      // Replaces the signing step when no Developer ID identity is configured, so the artifact
+      // carries a valid ad-hoc signature instead of the broken one macOS calls "damaged".
+      ...(input.macAdHocSign ? { sign: MAC_AD_HOC_SIGN_MODULE_PATH } : {}),
       extendInfo: {
         NSMicrophoneUsageDescription: MICROPHONE_USAGE_DESCRIPTION,
         ...(input.hasMacIconComposer ? { CFBundleIconFile: MAC_DMG_ICON_PATH } : {}),
