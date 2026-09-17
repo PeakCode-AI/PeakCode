@@ -1,82 +1,101 @@
-import { type ModelSelection } from "@peakcode/contracts";
+import { ThreadId } from "@peakcode/contracts";
 import { describe, expect, it } from "vitest";
+import { type ChatMessage } from "../types";
 import {
-  resolveAvailableHandoffTargetProviders,
-  resolveThreadHandoffTitle,
-  resolveThreadHandoffModelSelection,
+  buildThreadHandoffImportedMessages,
+  resolveThreadHandoffBadgeLabel,
 } from "./threadHandoff";
 
-describe("threadHandoff", () => {
-  it("lists no alternative handoff targets when only Pi is available", () => {
-    expect(resolveAvailableHandoffTargetProviders("pi")).toEqual([]);
-  });
+function chatMessage(
+  overrides: Partial<ChatMessage> & Pick<ChatMessage, "role" | "text">,
+): ChatMessage {
+  return {
+    id: "message-1" as ChatMessage["id"],
+    createdAt: "2026-01-01T00:00:00.000Z",
+    streaming: false,
+    ...overrides,
+  };
+}
 
-  it("preserves the source thread title for the created handoff thread", () => {
-    expect(resolveThreadHandoffTitle({ title: "General Greeting" })).toBe("General Greeting");
-    expect(resolveThreadHandoffTitle({ title: "  Debug   Pi handoff  " })).toBe("Debug Pi handoff");
-  });
-
-  it("prefers sticky model selection for the chosen handoff target", () => {
-    const stickySelection = {
-      provider: "pi",
-      model: "pi-coder-xl",
-    } satisfies ModelSelection;
-
+describe("resolveThreadHandoffBadgeLabel", () => {
+  it("labels a thread that a handoff produced", () => {
     expect(
-      resolveThreadHandoffModelSelection({
-        sourceThread: {
-          modelSelection: {
-            provider: "pi",
-            model: "pi-coder-m",
-          },
-        },
-        targetProvider: "pi",
-        projectDefaultModelSelection: {
-          provider: "pi",
-          model: "pi-coder-l",
-        },
-        stickyModelSelectionByProvider: {
-          pi: stickySelection,
+      resolveThreadHandoffBadgeLabel({
+        handoff: {
+          sourceThreadId: ThreadId.makeUnsafe("thread-source"),
+          sourceProvider: "pi",
+          importedAt: "2026-01-01T00:00:00.000Z",
+          bootstrapStatus: "completed",
         },
       }),
-    ).toEqual(stickySelection);
+    ).toBe("Handoff from Pi");
   });
 
-  it("falls back to the project default when no sticky selection exists", () => {
-    expect(
-      resolveThreadHandoffModelSelection({
-        sourceThread: {
-          modelSelection: {
-            provider: "pi",
-            model: "pi-coder-m",
-          },
-        },
-        targetProvider: "pi",
-        projectDefaultModelSelection: {
-          provider: "pi",
-          model: "pi-coder-l",
-        },
-        stickyModelSelectionByProvider: {},
-      }),
-    ).toEqual({
-      provider: "pi",
-      model: "pi-coder-l",
+  it("labels a thread that carries no handoff", () => {
+    expect(resolveThreadHandoffBadgeLabel({ handoff: null })).toBeNull();
+    expect(resolveThreadHandoffBadgeLabel({})).toBeNull();
+  });
+});
+
+describe("buildThreadHandoffImportedMessages", () => {
+  it("copies finished user and assistant messages and skips the rest", () => {
+    const imported = buildThreadHandoffImportedMessages({
+      messages: [
+        chatMessage({ role: "user", text: "first" }),
+        chatMessage({ role: "assistant", text: "second", completedAt: "2026-01-01T00:00:05.000Z" }),
+        chatMessage({ role: "assistant", text: "still streaming", streaming: true }),
+        chatMessage({ role: "system", text: "system notice" }),
+      ],
     });
+
+    expect(imported.map((message) => [message.role, message.text])).toEqual([
+      ["user", "first"],
+      ["assistant", "second"],
+    ]);
+    expect(imported[1]?.updatedAt).toBe("2026-01-01T00:00:05.000Z");
+    expect(imported[0]?.updatedAt).toBe("2026-01-01T00:00:00.000Z");
   });
 
-  it("throws when no compatible model can be resolved for Pi", () => {
-    expect(() =>
-      resolveThreadHandoffModelSelection({
-        sourceThread: {
-          modelSelection: {
-            provider: "pi",
-            model: "pi-coder-m",
-          },
-        },
-        targetProvider: "pi",
-        projectDefaultModelSelection: null,
-        stickyModelSelectionByProvider: {},
-      }),
-    ).toThrow("Select a Pi model before handing off to Pi.");
+  it("drops the assistant selection a user prompt quotes back", () => {
+    const [imported] = buildThreadHandoffImportedMessages({
+      messages: [
+        chatMessage({
+          role: "user",
+          text: "explain this\n<assistant_selection>\n- assistant message quote:\nold answer\n</assistant_selection>",
+        }),
+      ],
+    });
+
+    expect(imported?.text).toBe("explain this");
+  });
+
+  it("carries attachments over to the imported copy", () => {
+    const [imported] = buildThreadHandoffImportedMessages({
+      messages: [
+        chatMessage({
+          role: "user",
+          text: "look at this",
+          attachments: [
+            {
+              type: "image",
+              id: "attachment-1",
+              name: "shot.png",
+              mimeType: "image/png",
+              sizeBytes: 1234,
+            },
+          ],
+        }),
+      ],
+    });
+
+    expect(imported?.attachments).toEqual([
+      {
+        type: "image",
+        id: "attachment-1",
+        name: "shot.png",
+        mimeType: "image/png",
+        sizeBytes: 1234,
+      },
+    ]);
   });
 });

@@ -39,6 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Removed
 
 - The automation script columns (`scriptId`, `scriptName`, `scriptCommand`), which no code path ever wrote, and the automation templates that were tied to cron expressions. Migration `041_AutomationSchedules` rebuilds both automation tables; existing cron-based rows are not converted — see [.docs/automations.md](.docs/automations.md).
+- The client-side provider-to-provider handoff path: `useThreadHandoff` (called from nowhere), the target-provider list that could only ever be empty now that Pi is the only provider, and the handoff creation, title and model-selection helpers around them. The `thread.handoff.create` command stays on the server, where it is tested and still reads the handoff metadata older threads carry. Threads created before this change keep their handoff badge.
 
 ### Fixed
 
